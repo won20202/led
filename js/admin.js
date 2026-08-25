@@ -1,0 +1,208 @@
+// 관리자 모드: URL에 ?admin=1 + PIN. 학생 화면에는 진입 버튼이 없다.
+import { config, saveConfig, exportConfigCode, importConfigCode, getMisses, clearMisses,
+         cloudList, cloudGet, setReadOnlyWork, DEFAULT_CONFIG } from './state.js';
+
+const $ = id => document.getElementById(id);
+
+const FIELDS = [
+  ['thickness', '재료 두께 (cm)', 'number'],
+  ['targetW', '완성 목표 가로 (cm)', 'number'],
+  ['targetH', '완성 목표 세로 (cm)', 'number'],
+  ['targetD', '완성 목표 깊이 (cm)', 'number'],
+  ['showTarget', '완성 목표 치수를 학생 화면에 표시', 'checkbox'],
+  ['ledCount', 'LED 지급 개수', 'number'],
+  ['voltage', '전원 전압 (V)', 'number'],
+  ['imax', '전지 최대 공급 전류 (mA)', 'number'],
+  ['frontW', '앞면 종이 가로 (cm)', 'number'],
+  ['frontH', '앞면 종이 세로 (cm)', 'number'],
+  ['areaW', '도안 작업 영역 가로 (cm)', 'number'],
+  ['areaH', '도안 작업 영역 세로 (cm)', 'number'],
+  ['strokeMin', '획 굵기 하한 (cm)', 'number'],
+  ['letterMin', '글자 세로 최소 (cm)', 'number'],
+  ['letterMax', '글자 세로 최대 (cm)', 'number'],
+  ['pictoMin', '그림 크기 최소 (cm)', 'number'],
+  ['pictoMax', '그림 크기 최대 (cm)', 'number'],
+  ['boardW', '우드락 판 가로 (cm)', 'number'],
+  ['boardH', '우드락 판 세로 (cm)', 'number'],
+  ['showSupply', '지급 재료 수량 표시', 'checkbox'],
+  ['showMeasure', '실측값 표시', 'checkbox'],
+  ['askPredict', '예측 먼저 (조립·점등 전 예측 입력)', 'checkbox'],
+  ['questionFeedback', '질문형 피드백 표시', 'checkbox'],
+  ['classCode', '반 입장 코드 (비우면 검사 안 함)', 'text'],
+  ['adminPin', '관리자 PIN', 'text'],
+  ['supabaseUrl', 'Supabase URL (비우면 이 기기에만 저장)', 'text'],
+  ['supabaseKey', 'Supabase anon key', 'text'],
+];
+
+function renderSettings() {
+  $('adm-settings').innerHTML = FIELDS.map(([k, label, type]) => {
+    if (type === 'checkbox')
+      return `<label class="adm-row"><input type="checkbox" data-k="${k}" ${config[k] ? 'checked' : ''}> ${label}</label>`;
+    return `<label class="adm-row">${label}<input type="${type}" data-k="${k}" value="${config[k] ?? ''}" step="any"></label>`;
+  }).join('') +
+  `<label class="adm-row">초과 시 동작
+     <select data-k="overLimit">
+       <option value="warn" ${config.overLimit === 'warn' ? 'selected' : ''}>경고만 (권장)</option>
+       <option value="block" ${config.overLimit === 'block' ? 'selected' : ''}>차단</option>
+     </select></label>`;
+}
+
+function collectSettings() {
+  $('adm-settings').querySelectorAll('[data-k]').forEach(el => {
+    const k = el.dataset.k;
+    if (el.type === 'checkbox') config[k] = el.checked;
+    else if (el.type === 'number') config[k] = parseFloat(el.value) || DEFAULT_CONFIG[k];
+    else config[k] = el.value;
+  });
+  saveConfig();
+}
+
+function renderFaqEditor() {
+  $('adm-faq').innerHTML = config.faq.map((f, i) =>
+    `<div class="adm-faq-item" data-i="${i}">
+       <input class="fq" value="${esc(f.q)}" placeholder="질문">
+       <input class="fk" value="${esc(f.k || '')}" placeholder="검색 키워드 (띄어쓰기로 구분)">
+       <textarea class="fa" rows="2" placeholder="답변">${esc(f.a)}</textarea>
+       <div><select class="ft">
+         ${['all', 'case', 'circuit', 'design', 'order', 'preview'].map(t =>
+           `<option value="${t}" ${f.tab === t ? 'selected' : ''}>${{ all: '공통', case: '케이스', circuit: '회로', design: '도안', order: '조립순서', preview: '미리보기' }[t]}</option>`).join('')}
+       </select> <button class="fdel">삭제</button></div>
+     </div>`).join('');
+  $('adm-faq').querySelectorAll('.fdel').forEach((b, i) =>
+    b.addEventListener('click', () => { config.faq.splice(i, 1); saveConfig(); renderFaqEditor(); }));
+}
+function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;'); }
+
+function collectFaq() {
+  const items = [];
+  $('adm-faq').querySelectorAll('.adm-faq-item').forEach(div => {
+    const q = div.querySelector('.fq').value.trim();
+    const a = div.querySelector('.fa').value.trim();
+    if (q && a) items.push({ q, k: div.querySelector('.fk').value.trim(), a, tab: div.querySelector('.ft').value });
+  });
+  config.faq = items;
+  saveConfig();
+}
+
+function renderMisses() {
+  const m = getMisses();
+  $('adm-miss').innerHTML = m.length
+    ? m.slice(-40).reverse().map(x => `<div>· ${esc(x.q)}</div>`).join('')
+    : '<p class="muted">학생이 검색했지만 답을 못 찾은 검색어가 여기에 쌓입니다.</p>';
+}
+
+function localWorks() {
+  const out = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    const m = k && k.match(/^lps_work_(\d+)-(\d+)$/);
+    if (m) {
+      try {
+        const w = JSON.parse(localStorage.getItem(k));
+        out.push({ ban: +m[1], num: +m[2], updated: w.updatedAt, w });
+      } catch (e) { /* ignore */ }
+    }
+  }
+  return out.sort((a, b) => a.ban - b.ban || a.num - b.num);
+}
+
+async function renderWorks() {
+  const el = $('adm-works');
+  let html = '<h4>이 기기에 저장된 작업</h4>';
+  const loc = localWorks();
+  html += loc.length
+    ? loc.map((r, i) => row(`${r.ban}반 ${r.num}번`, r.updated, `local:${r.ban}-${r.num}`)).join('')
+    : '<p class="muted">없음</p>';
+  html += '<h4>서버(Supabase)에 모인 작업</h4>';
+  if (!config.supabaseUrl) {
+    html += '<p class="muted">Supabase가 설정되지 않았습니다. 설정하면 모든 학생의 작업이 여기에 모입니다.</p>';
+    el.innerHTML = html; bindWorkButtons(); return;
+  }
+  el.innerHTML = html + '<p class="muted">불러오는 중…</p>';
+  try {
+    const rows = await cloudList();
+    html += rows.length
+      ? `<table class="adm-table"><tr><th>학번</th><th>마지막 저장</th><th></th></tr>` +
+        rows.map(r => `<tr><td>${r.ban}반 ${r.num}번</td><td>${new Date(r.updated_at).toLocaleString('ko-KR')}</td>
+          <td><button class="w-open" data-id="cloud:${r.id}">보기</button></td></tr>`).join('') + '</table>'
+      : '<p class="muted">아직 저장된 학생 작업이 없습니다.</p>';
+  } catch (e) {
+    html += `<p class="warn">서버에서 불러오지 못했습니다: ${esc(e.message)}</p>`;
+  }
+  el.innerHTML = html;
+  bindWorkButtons();
+}
+function row(label, updated, id) {
+  return `<div class="adm-work-row">${label} <span class="muted">${updated ? new Date(updated).toLocaleString('ko-KR') : ''}</span>
+    <button class="w-open" data-id="${id}">보기</button></div>`;
+}
+function bindWorkButtons() {
+  $('adm-works').querySelectorAll('.w-open').forEach(b => b.addEventListener('click', async () => {
+    const [kind, id] = [b.dataset.id.split(':')[0], b.dataset.id.split(':').slice(1).join(':')];
+    let w = null, label = id;
+    if (kind === 'local') {
+      w = JSON.parse(localStorage.getItem('lps_work_' + id));
+    } else {
+      b.textContent = '…';
+      try { w = await cloudGet(id); } catch (e) { alert('불러오기 실패: ' + e.message); }
+      b.textContent = '보기';
+    }
+    if (!w) { alert('데이터가 없습니다.'); return; }
+    openReadOnly(w, label);
+  }));
+}
+
+function openReadOnly(w, label) {
+  setReadOnlyWork(w, label);
+  $('admin-modal').classList.add('hidden');
+  $('login-modal').classList.add('hidden');
+  $('app').classList.remove('hidden');
+  $('readonly-banner').classList.remove('hidden');
+  $('readonly-banner').textContent = `👁 관리자 열람 중 — ${label} (편집 불가 · 나가려면 새로고침)`;
+  $('student-badge').textContent = label;
+  document.dispatchEvent(new CustomEvent('work-loaded'));
+}
+
+export function initAdmin() {
+  const params = new URLSearchParams(location.search);
+  if (params.get('admin') !== '1') return;
+
+  $('admin-modal').classList.remove('hidden');
+  $('adm-pin-gate').classList.remove('hidden');
+  $('adm-content').classList.add('hidden');
+  $('adm-pin-btn').addEventListener('click', () => {
+    if ($('adm-pin').value !== config.adminPin) { $('adm-pin-err').textContent = 'PIN이 다릅니다.'; return; }
+    $('adm-pin-gate').classList.add('hidden');
+    $('adm-content').classList.remove('hidden');
+    renderSettings(); renderFaqEditor(); renderMisses(); renderWorks();
+  });
+
+  $('adm-save').addEventListener('click', () => {
+    collectSettings(); collectFaq();
+    alert('저장되었습니다. 학생 화면은 새로고침하면 반영됩니다.');
+  });
+  $('adm-faq-add').addEventListener('click', () => {
+    collectFaq();
+    config.faq.push({ q: '', k: '', a: '', tab: 'all' });
+    renderFaqEditor();
+  });
+  $('adm-export').addEventListener('click', () => {
+    collectSettings(); collectFaq();
+    $('adm-code').value = exportConfigCode();
+    $('adm-code').select();
+    if (navigator.clipboard) navigator.clipboard.writeText($('adm-code').value).catch(() => {});
+  });
+  $('adm-import').addEventListener('click', () => {
+    try {
+      importConfigCode($('adm-code').value);
+      alert('설정을 불러왔습니다.');
+      renderSettings(); renderFaqEditor();
+    } catch (e) { alert('설정 코드가 올바르지 않습니다.'); }
+  });
+  $('adm-miss-clear').addEventListener('click', () => { clearMisses(); renderMisses(); });
+  $('adm-close').addEventListener('click', () => {
+    $('admin-modal').classList.add('hidden');
+    location.href = location.pathname; // 학생 화면으로
+  });
+  $('adm-works-reload').addEventListener('click', renderWorks);
+}
