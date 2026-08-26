@@ -1,17 +1,21 @@
-// 관리자 모드: URL에 ?admin=1 + PIN. 학생 화면에는 진입 버튼이 없다.
+// 관리자 모드: 로그인 화면의 [관리자] 버튼 또는 URL ?admin=1 → PIN 입력.
 import { config, saveConfig, exportConfigCode, importConfigCode, getMisses, clearMisses,
-         cloudList, cloudGet, setReadOnlyWork, DEFAULT_CONFIG } from './state.js';
+         cloudList, cloudGet, setReadOnlyWork, DEFAULT_CONFIG, DEFAULT_RUBRIC } from './state.js';
 
 const $ = id => document.getElementById(id);
 
 const FIELDS = [
-  ['thickness', '재료 두께 (cm)', 'number'],
+  ['thickness', '재료(우드락) 두께 (cm)', 'number'],
   ['targetW', '완성 목표 가로 (cm)', 'number'],
   ['targetH', '완성 목표 세로 (cm)', 'number'],
   ['targetD', '완성 목표 깊이 (cm)', 'number'],
   ['showTarget', '완성 목표 치수를 학생 화면에 표시', 'checkbox'],
   ['ledCount', 'LED 지급 개수', 'number'],
+  ['allowResistor', '저항 부품 사용 (회로 탭에 저항 도구 표시)', 'checkbox'],
+  ['resistorOhm', '저항값 (Ω)', 'number'],
   ['voltage', '전원 전압 (V)', 'number'],
+  ['vf', 'LED 점등 문턱 전압 (V) — 직렬 소등 기준', 'number'],
+  ['rint', '내부 저항 (Ω) — 밝기 계산용', 'number'],
   ['imax', '전지 최대 공급 전류 (mA)', 'number'],
   ['frontW', '앞면 종이 가로 (cm)', 'number'],
   ['frontH', '앞면 종이 세로 (cm)', 'number'],
@@ -34,13 +38,15 @@ const FIELDS = [
   ['supabaseKey', 'Supabase anon key', 'text'],
 ];
 
+function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;'); }
+
 function renderSettings() {
   $('adm-settings').innerHTML = FIELDS.map(([k, label, type]) => {
     if (type === 'checkbox')
-      return `<label class="adm-row"><input type="checkbox" data-k="${k}" ${config[k] ? 'checked' : ''}> ${label}</label>`;
-    return `<label class="adm-row">${label}<input type="${type}" data-k="${k}" value="${config[k] ?? ''}" step="any"></label>`;
+      return `<label class="adm-row"><span>${label}</span><input type="checkbox" data-k="${k}" ${config[k] ? 'checked' : ''}></label>`;
+    return `<label class="adm-row"><span>${label}</span><input type="${type}" data-k="${k}" value="${esc(config[k] ?? '')}" step="any"></label>`;
   }).join('') +
-  `<label class="adm-row">초과 시 동작
+  `<label class="adm-row"><span>초과 시 동작</span>
      <select data-k="overLimit">
        <option value="warn" ${config.overLimit === 'warn' ? 'selected' : ''}>경고만 (권장)</option>
        <option value="block" ${config.overLimit === 'block' ? 'selected' : ''}>차단</option>
@@ -57,6 +63,62 @@ function collectSettings() {
   saveConfig();
 }
 
+// ---- 평가 기준(배점표) 편집 ----
+function renderRubric() {
+  const rub = config.rubric && config.rubric.length ? config.rubric : JSON.parse(JSON.stringify(DEFAULT_RUBRIC));
+  config.rubric = rub;
+  $('adm-rubric').innerHTML = rub.map((area, ai) => `
+    <div class="adm-area" data-ai="${ai}">
+      <div class="adm-area-head">
+        <input class="ra-name" value="${esc(area.name)}" placeholder="평가 영역 이름 (예: 설계 포트폴리오)">
+        <button class="ra-del">영역 삭제</button>
+      </div>
+      <textarea class="ra-note" rows="2" placeholder="평가 준거 조건 설명 (선택)">${esc(area.note || '')}</textarea>
+      <table class="adm-table">
+        <tr><th>평가 준거 (수준별)</th><th style="width:70px">배점</th><th style="width:46px"></th></tr>
+        ${area.levels.map((lv, li) => `
+          <tr data-li="${li}">
+            <td><input class="ra-desc" value="${esc(lv.d)}" placeholder="예: 4가지 조건을 모두 충족함"></td>
+            <td><input class="ra-pts" type="number" step="1" value="${lv.p}"></td>
+            <td><button class="ra-lvdel">✕</button></td>
+          </tr>`).join('')}
+      </table>
+      <button class="ra-lvadd small-btn">+ 수준 추가</button>
+    </div>`).join('');
+
+  const total = rub.reduce((a, r) => a + (r.levels[0] ? r.levels[0].p : 0), 0);
+  $('adm-rubric').innerHTML += `<p class="muted small">영역 최고점 합계: ${total}점</p>`;
+
+  $('adm-rubric').querySelectorAll('.adm-area').forEach(div => {
+    const ai = +div.dataset.ai;
+    div.querySelector('.ra-del').addEventListener('click', () => {
+      collectRubric(); config.rubric.splice(ai, 1); renderRubric();
+    });
+    div.querySelector('.ra-lvadd').addEventListener('click', () => {
+      collectRubric(); config.rubric[ai].levels.push({ d: '', p: 0 }); renderRubric();
+    });
+    div.querySelectorAll('.ra-lvdel').forEach((b, li) =>
+      b.addEventListener('click', () => {
+        collectRubric(); config.rubric[ai].levels.splice(li, 1); renderRubric();
+      }));
+  });
+}
+function collectRubric() {
+  const out = [];
+  $('adm-rubric').querySelectorAll('.adm-area').forEach(div => {
+    const levels = [];
+    div.querySelectorAll('tr[data-li]').forEach(tr => {
+      const d = tr.querySelector('.ra-desc').value.trim();
+      const p = parseFloat(tr.querySelector('.ra-pts').value) || 0;
+      if (d) levels.push({ d, p });
+    });
+    const name = div.querySelector('.ra-name').value.trim();
+    if (name) out.push({ name, note: div.querySelector('.ra-note').value.trim(), levels });
+  });
+  config.rubric = out;
+}
+
+// ---- FAQ 편집 ----
 function renderFaqEditor() {
   $('adm-faq').innerHTML = config.faq.map((f, i) =>
     `<div class="adm-faq-item" data-i="${i}">
@@ -71,8 +133,6 @@ function renderFaqEditor() {
   $('adm-faq').querySelectorAll('.fdel').forEach((b, i) =>
     b.addEventListener('click', () => { config.faq.splice(i, 1); saveConfig(); renderFaqEditor(); }));
 }
-function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;'); }
-
 function collectFaq() {
   const items = [];
   $('adm-faq').querySelectorAll('.adm-faq-item').forEach(div => {
@@ -108,17 +168,18 @@ function localWorks() {
 
 async function renderWorks() {
   const el = $('adm-works');
+  if (!el) return;
   let html = '<h4>이 기기에 저장된 작업</h4>';
   const loc = localWorks();
   html += loc.length
-    ? loc.map((r, i) => row(`${r.ban}반 ${r.num}번`, r.updated, `local:${r.ban}-${r.num}`)).join('')
+    ? loc.map(r => `<div class="adm-work-row">${r.ban}반 ${r.num}번 <span class="muted">${r.updated ? new Date(r.updated).toLocaleString('ko-KR') : ''}</span>
+        <button class="w-open" data-id="local:${r.ban}-${r.num}">보기</button></div>`).join('')
     : '<p class="muted">없음</p>';
   html += '<h4>서버(Supabase)에 모인 작업</h4>';
   if (!config.supabaseUrl) {
-    html += '<p class="muted">Supabase가 설정되지 않았습니다. 설정하면 모든 학생의 작업이 여기에 모입니다.</p>';
+    html += '<p class="muted">Supabase가 설정되지 않았습니다. 설정하면 모든 학생의 작업이 여기에 모이고 20초마다 자동 갱신됩니다.</p>';
     el.innerHTML = html; bindWorkButtons(); return;
   }
-  el.innerHTML = html + '<p class="muted">불러오는 중…</p>';
   try {
     const rows = await cloudList();
     html += rows.length
@@ -132,54 +193,81 @@ async function renderWorks() {
   el.innerHTML = html;
   bindWorkButtons();
 }
-function row(label, updated, id) {
-  return `<div class="adm-work-row">${label} <span class="muted">${updated ? new Date(updated).toLocaleString('ko-KR') : ''}</span>
-    <button class="w-open" data-id="${id}">보기</button></div>`;
-}
 function bindWorkButtons() {
   $('adm-works').querySelectorAll('.w-open').forEach(b => b.addEventListener('click', async () => {
-    const [kind, id] = [b.dataset.id.split(':')[0], b.dataset.id.split(':').slice(1).join(':')];
-    let w = null, label = id;
+    const kind = b.dataset.id.split(':')[0];
+    const id = b.dataset.id.split(':').slice(1).join(':');
+    let w = null;
     if (kind === 'local') {
-      w = JSON.parse(localStorage.getItem('lps_work_' + id));
+      try { w = JSON.parse(localStorage.getItem('lps_work_' + id)); } catch (e) { /* ignore */ }
     } else {
       b.textContent = '…';
       try { w = await cloudGet(id); } catch (e) { alert('불러오기 실패: ' + e.message); }
       b.textContent = '보기';
     }
     if (!w) { alert('데이터가 없습니다.'); return; }
-    openReadOnly(w, label);
+    openReadOnly(w, id, kind === 'cloud' ? id : null);
   }));
 }
 
-function openReadOnly(w, label) {
+let liveTimer = null, worksTimer = null;
+function openReadOnly(w, label, cloudId) {
   setReadOnlyWork(w, label);
   $('admin-modal').classList.add('hidden');
   $('login-modal').classList.add('hidden');
   $('app').classList.remove('hidden');
   $('readonly-banner').classList.remove('hidden');
-  $('readonly-banner').textContent = `👁 관리자 열람 중 — ${label} (편집 불가 · 나가려면 새로고침)`;
+  $('readonly-banner').textContent = `관리자 열람 중 — ${label}` +
+    (cloudId ? ' (실시간 갱신)' : '') + ' · 편집 불가 · 나가려면 새로고침';
   $('student-badge').textContent = label;
   document.dispatchEvent(new CustomEvent('work-loaded'));
+  window.dispatchEvent(new Event('resize'));
+  // 서버 작업이면 주기적으로 다시 받아와 실시간처럼 보여준다
+  clearInterval(liveTimer);
+  if (cloudId) {
+    liveTimer = setInterval(async () => {
+      try {
+        const w2 = await cloudGet(cloudId);
+        if (w2) {
+          setReadOnlyWork(w2, label);
+          document.dispatchEvent(new CustomEvent('work-loaded'));
+        }
+      } catch (e) { /* 다음 주기에 재시도 */ }
+    }, 15000);
+  }
 }
 
-export function initAdmin() {
-  const params = new URLSearchParams(location.search);
-  if (params.get('admin') !== '1') return;
-
+export function openAdmin() {
   $('admin-modal').classList.remove('hidden');
   $('adm-pin-gate').classList.remove('hidden');
   $('adm-content').classList.add('hidden');
+  $('adm-pin').value = '';
+  $('adm-pin-err').textContent = '';
+  $('adm-pin').focus();
+}
+
+export function initAdmin() {
   $('adm-pin-btn').addEventListener('click', () => {
     if ($('adm-pin').value !== config.adminPin) { $('adm-pin-err').textContent = 'PIN이 다릅니다.'; return; }
     $('adm-pin-gate').classList.add('hidden');
     $('adm-content').classList.remove('hidden');
-    renderSettings(); renderFaqEditor(); renderMisses(); renderWorks();
+    renderSettings(); renderRubric(); renderFaqEditor(); renderMisses(); renderWorks();
+    clearInterval(worksTimer);
+    worksTimer = setInterval(() => {
+      if (!$('admin-modal').classList.contains('hidden')) renderWorks();
+    }, 20000);
   });
+  $('adm-pin').addEventListener('keydown', e => { if (e.key === 'Enter') $('adm-pin-btn').click(); });
 
   $('adm-save').addEventListener('click', () => {
-    collectSettings(); collectFaq();
+    collectSettings(); collectRubric(); collectFaq();
+    saveConfig();
     alert('저장되었습니다. 학생 화면은 새로고침하면 반영됩니다.');
+  });
+  $('adm-rubric-add').addEventListener('click', () => {
+    collectRubric();
+    config.rubric.push({ name: '', note: '', levels: [{ d: '', p: 0 }] });
+    renderRubric();
   });
   $('adm-faq-add').addEventListener('click', () => {
     collectFaq();
@@ -187,7 +275,7 @@ export function initAdmin() {
     renderFaqEditor();
   });
   $('adm-export').addEventListener('click', () => {
-    collectSettings(); collectFaq();
+    collectSettings(); collectRubric(); collectFaq();
     $('adm-code').value = exportConfigCode();
     $('adm-code').select();
     if (navigator.clipboard) navigator.clipboard.writeText($('adm-code').value).catch(() => {});
@@ -196,13 +284,16 @@ export function initAdmin() {
     try {
       importConfigCode($('adm-code').value);
       alert('설정을 불러왔습니다.');
-      renderSettings(); renderFaqEditor();
+      renderSettings(); renderRubric(); renderFaqEditor();
     } catch (e) { alert('설정 코드가 올바르지 않습니다.'); }
   });
   $('adm-miss-clear').addEventListener('click', () => { clearMisses(); renderMisses(); });
   $('adm-close').addEventListener('click', () => {
     $('admin-modal').classList.add('hidden');
-    location.href = location.pathname; // 학생 화면으로
+    clearInterval(worksTimer);
   });
   $('adm-works-reload').addEventListener('click', renderWorks);
+
+  const params = new URLSearchParams(location.search);
+  if (params.get('admin') === '1') openAdmin();
 }

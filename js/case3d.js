@@ -249,8 +249,8 @@ function assemble(logIt) {
     html += `<p class="measure">지금 만들어진 케이스<br><b>가로 ${f(W)} · 세로 ${f(H)} · 깊이 ${f(D)} cm</b></p>`;
   if (config.showTarget)
     html += `<p class="muted">완성 목표 — ${config.targetW} × ${config.targetH} × ${config.targetD} cm</p>`;
-  if (overlapN) html += `<p class="warn">🟥 판이 겹쳐 튀어나온 곳이 ${overlapN}군데 있습니다. 어느 조각을 얼마나 줄여야 할까요?</p>`;
-  if (gapN) html += `<p class="warn">🟨 판 사이가 벌어진 틈이 보입니다. 어느 조각이 짧은 걸까요?</p>`;
+  if (overlapN) html += `<p class="warn"><span class="dot red"></span> 판이 겹쳐 튀어나온 곳이 ${overlapN}군데 있습니다. 어느 조각을 얼마나 줄여야 할까요?</p>`;
+  if (gapN) html += `<p class="warn"><span class="dot yellow"></span> 판 사이가 벌어진 틈이 보입니다. 어느 조각이 짧은 걸까요?</p>`;
   if (!overlapN && !gapN) html += `<p class="ok">겹침과 틈 없이 조립되었습니다. 완성 크기가 의도한 값인지 확인해 보세요.</p>`;
 
   // 예측 비교

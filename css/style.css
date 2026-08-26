@@ -138,3 +138,27 @@ h4 { font-size: 13px; margin: 12px 0 6px; color: #4a5561; }
 #adm-code { width: 100%; font-size: 11px; font-family: monospace; }
 .adm-tabs details { margin: 10px 0; border: 1px solid #e3e8ee; border-radius: 10px; padding: 10px; }
 .adm-tabs summary { font-weight: 700; cursor: pointer; }
+
+/* 표식·기타 */
+.dot { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; }
+.dot.red { background: #e23c3c; }
+.dot.yellow { background: #f5c518; }
+button.link { border: none; background: transparent; color: #98a1ab; font-size: 12px; margin-top: 14px; text-decoration: underline; }
+button.link:hover { color: #4a5561; background: transparent; }
+.preview-title { margin: 16px 0 4px; }
+
+/* 평가 기준 표 */
+.rubric-table { border-collapse: collapse; width: 100%; margin: 6px 0 14px; }
+.rubric-table td { border: 1px solid #e3e8ee; padding: 5px 8px; font-size: 13px; }
+.rubric-table td.pts { text-align: center; width: 56px; font-weight: 700; }
+#faq-rubric-box { border: 1px solid #e3e8ee; border-radius: 8px; padding: 8px 10px; margin: 8px 0; }
+#faq-rubric-box summary { font-weight: 700; cursor: pointer; }
+
+/* 관리자: 배점표 편집 */
+.adm-area { border: 1px solid #e3e8ee; border-radius: 10px; padding: 10px; margin: 10px 0; }
+.adm-area-head { display: flex; gap: 8px; margin-bottom: 6px; }
+.adm-area-head .ra-name { flex: 1; font-weight: 700; }
+.adm-area .ra-note { width: 100%; margin-bottom: 6px; }
+.adm-area .ra-desc { width: 100%; }
+.adm-area .ra-pts { width: 60px; }
+.adm-row span { flex: 1; }

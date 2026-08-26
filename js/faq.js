@@ -25,9 +25,24 @@ function search(q) {
   renderList(hits);
 }
 
+// 평가 기준(관리자가 편집한 배점표)을 표로 렌더링
+function renderRubric() {
+  const rub = config.rubric || [];
+  const box = $('faq-rubric-box');
+  if (!rub.length) { box.style.display = 'none'; return; }
+  box.style.display = '';
+  $('faq-rubric').innerHTML = rub.map(area => `
+    <h4>${area.name}${area.levels[0] ? ` (${area.levels[0].p}점)` : ''}</h4>
+    ${area.note ? `<p class="small muted">${area.note}</p>` : ''}
+    <table class="rubric-table">
+      ${area.levels.map(lv => `<tr><td>${lv.d}</td><td class="pts">${lv.p}점</td></tr>`).join('')}
+    </table>`).join('');
+}
+
 export function openFaq(tab) {
   $('faq-modal').classList.remove('hidden');
   $('faq-search').value = '';
+  renderRubric();
   if (tab && tab !== 'all') {
     const hits = config.faq.filter(f => f.tab === tab || f.tab === 'all');
     renderList(hits);

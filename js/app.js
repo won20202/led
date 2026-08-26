@@ -6,7 +6,7 @@ import { initDesign, refreshDesign } from './design.js';
 import { initAssembly, refreshAssembly } from './assembly.js';
 import { initPreview, drawPreview } from './preview.js';
 import { initFaq } from './faq.js';
-import { initAdmin } from './admin.js';
+import { initAdmin, openAdmin } from './admin.js';
 
 const $ = id => document.getElementById(id);
 
@@ -20,6 +20,8 @@ function setupLogin() {
     const last = JSON.parse(localStorage.getItem('lps_last') || 'null');
     if (last) { banSel.value = last.ban; numSel.value = last.num; }
   } catch (e) { /* ignore */ }
+
+  $('login-admin').addEventListener('click', openAdmin);
 
   $('login-btn').addEventListener('click', () => {
     if (config.classCode && $('login-code').value.trim() !== config.classCode) {

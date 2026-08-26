@@ -11,7 +11,7 @@
 <!-- 로그인 -->
 <div id="login-modal" class="modal">
   <div class="modal-box login-box">
-    <h1>💡 LED 플래카드 설계 시뮬레이터</h1>
+    <h1>LED 플래카드 설계 시뮬레이터</h1>
     <p class="muted">2학년 제조 기술 문제해결 수행평가</p>
     <div class="login-row">
       <select id="login-ban"></select>
@@ -23,6 +23,7 @@
     <p id="login-err" class="warn"></p>
     <button id="login-btn" class="primary big">시작하기</button>
     <p class="muted small">이 프로그램은 결과만 보여줍니다. 계산과 판단은 여러분의 몫!<br>포트폴리오는 반드시 손으로 작성하세요.</p>
+    <button id="login-admin" class="link">관리자</button>
   </div>
 </div>
 
@@ -31,13 +32,13 @@
 <!-- 본 화면 -->
 <div id="app" class="hidden">
   <header>
-    <span class="logo">💡 LED 플래카드</span>
+    <span class="logo">LED 플래카드</span>
     <nav>
-      <button class="tab-btn" data-tab="case">📦 케이스</button>
-      <button class="tab-btn" data-tab="circuit">🔌 회로</button>
-      <button class="tab-btn" data-tab="design">✏️ 도안</button>
-      <button class="tab-btn" data-tab="order">🔢 조립 순서</button>
-      <button class="tab-btn" data-tab="preview">🌙 미리보기</button>
+      <button class="tab-btn" data-tab="case">케이스</button>
+      <button class="tab-btn" data-tab="circuit">회로</button>
+      <button class="tab-btn" data-tab="design">도안</button>
+      <button class="tab-btn" data-tab="order">조립 순서</button>
+      <button class="tab-btn" data-tab="preview">미리보기</button>
     </nav>
     <span class="head-right">
       <span id="cloud-dot" class="cloud-dot off" title="이 기기에만 저장됩니다"></span>
@@ -59,7 +60,7 @@
         <div><input id="in-tb-w" type="number" step="0.1" placeholder="가로"> × <input id="in-tb-h" type="number" step="0.1" placeholder="세로"></div>
       </div>
       <div id="predict-row" class="predict-box">
-        <label>🤔 조립하면 완성 크기가 얼마가 될까요?</label>
+        <label>조립하면 완성 크기가 얼마가 될까요?</label>
         <div><input id="in-pre-w" type="number" step="0.1" placeholder="가로"> × <input id="in-pre-h" type="number" step="0.1" placeholder="세로"> × <input id="in-pre-d" type="number" step="0.1" placeholder="깊이"></div>
         <p id="predict-hint" class="warn small"></p>
       </div>
@@ -79,7 +80,7 @@
     </div>
     <aside class="panel-right">
       <div id="case-info"><p class="muted">치수를 입력하고 조립해 보세요.</p></div>
-      <h4>📒 설계 일지</h4>
+      <h4>설계 일지</h4>
       <div id="case-log" class="log-list"></div>
     </aside>
   </section>
@@ -87,41 +88,54 @@
   <!-- 회로 탭 -->
   <section id="tab-circuit" class="tab-panel">
     <aside class="panel-left">
-      <h3>부품 <button class="faq-btn" data-faqtab="circuit">?</button></h3>
+      <h3>설치할 면 <button class="faq-btn" data-faqtab="circuit">?</button></h3>
+      <div id="surf-sel" class="tools">
+        <button data-v="back" class="active">뒷면 (안쪽)</button>
+        <button data-v="band">옆면 둘레 띠</button>
+      </div>
+      <h3>부품</h3>
       <div id="circuit-tools" class="tools">
-        <button data-tool="select" class="active">🖱 선택·이동</button>
-        <button data-tool="tape">⬛ 전도성 테이프</button>
-        <button data-tool="led">💡 LED</button>
-        <button data-tool="holder">🔋 건전지 홀더</button>
-        <button data-tool="erase">🧽 지우개</button>
+        <button data-tool="select" class="active">선택·이동</button>
+        <button data-tool="tape">전도성 테이프</button>
+        <button data-tool="led">LED</button>
+        <button data-tool="res" id="tool-res" style="display:none">저항</button>
+        <button data-tool="holder">건전지 홀더</button>
+        <button data-tool="erase">지우개</button>
       </div>
       <p id="tape-hint" class="muted small" style="display:none">클릭으로 점을 찍고,<br>더블클릭·Enter·[테이프 완료]로 끝내요.</p>
       <button id="btn-tape-done" class="small-btn">테이프 완료</button>
+      <div class="tool-row">
+        <label class="small">확대</label>
+        <button id="zoom-out" class="small-btn">−</button>
+        <button id="zoom-in" class="small-btn">+</button>
+      </div>
       <div id="led-props" class="props" style="display:none">
-        <h4>선택한 LED</h4>
-        <button id="btn-led-rot">↻ 방향 돌리기 (R)</button>
-        <p class="small muted">긴 다리(+)가 어느 줄에 닿는지 확인!</p>
-        <label class="small">머리 매직 색칠</label>
-        <div id="magic-palette">
-          <button data-c="none" style="background:#f5f0dc">없음</button>
-          <button data-c="yellow" style="background:#f5dc5a">노랑</button>
-          <button data-c="green" style="background:#7ed88a">초록</button>
-          <button data-c="red" style="background:#ee7777">빨강</button>
-          <button data-c="blue" style="background:#7aa3e8">파랑</button>
-          <button data-c="black" style="background:#555;color:#fff">검정</button>
+        <h4>선택한 부품</h4>
+        <button id="btn-led-rot">방향 돌리기 (R)</button>
+        <div id="magic-wrap">
+          <p class="small muted">긴 다리(+)가 어느 줄에 닿는지 확인!</p>
+          <label class="small">머리 매직 색칠</label>
+          <div id="magic-palette">
+            <button data-c="none" style="background:#f5f0dc">없음</button>
+            <button data-c="yellow" style="background:#f5dc5a">노랑</button>
+            <button data-c="green" style="background:#7ed88a">초록</button>
+            <button data-c="red" style="background:#ee7777">빨강</button>
+            <button data-c="blue" style="background:#7aa3e8">파랑</button>
+            <button data-c="black" style="background:#555;color:#fff">검정</button>
+          </div>
         </div>
       </div>
       <div id="holder-props" class="props" style="display:none">
         <h4>건전지 홀더</h4>
         <button id="btn-switch-dir">스위치 방향 뒤집기</button>
-        <p class="small muted">빨간 선(+)·검은 선(−) 끝을<br>드래그해서 테이프에 붙이세요.</p>
+        <p class="small muted">빨간 선(+)·검은 선(−) 끝을 드래그해서<br>테이프나 LED 다리에 붙이세요.</p>
       </div>
       <div id="circuit-predict-row" class="predict-box">
-        <label>🤔 몇 개가 켜질까요?</label>
+        <label>몇 개가 켜질까요?</label>
         <input id="in-predict-led" type="number" min="0" max="20" placeholder="개수">
         <p id="circuit-predict-hint" class="warn small"></p>
       </div>
-      <button id="btn-test" class="primary big">🔘 스위치 눌러 점등!</button>
+      <button id="btn-test" class="primary big">스위치 눌러 점등</button>
     </aside>
     <div class="panel-center scrollable">
       <canvas id="circuit-canvas"></canvas>
@@ -134,7 +148,7 @@
   <!-- 도안 탭 -->
   <section id="tab-design" class="tab-panel">
     <aside class="panel-left">
-      <h3>도안 요소 <button class="faq-btn" data-faqtab="design">?</button></h3>
+      <h3>도안 <button class="faq-btn" data-faqtab="design">?</button></h3>
       <div class="dim-group">
         <label>글자 1</label>
         <div class="d-row"><input id="d-l1-text" maxlength="1" placeholder="한 글자">
@@ -144,20 +158,19 @@
         <div class="d-row"><input id="d-l2-text" maxlength="1" placeholder="한 글자">
           크기 <input id="d-l2-size" type="number" step="0.5" min="2" max="10" class="w4">cm</div>
         <div class="d-row">획 굵기 <input id="d-l2-stroke" type="range" min="0.4" max="1.5" step="0.05" class="w8"></div>
-        <label>그림</label>
+        <label>그림 (직접 그리기)</label>
+        <div id="design-modes" class="tools">
+          <button data-m="move" class="active">선택·이동</button>
+          <button data-m="draw">그리기</button>
+          <button data-m="erase">획 지우개</button>
+        </div>
+        <div class="d-row">붓 굵기 <input id="d-brush" type="range" min="0.4" max="1.5" step="0.05" value="0.8" class="w8"></div>
         <div class="d-row">
-          <select id="d-p-shape">
-            <option value="none">없음</option>
-            <option value="heart">하트</option>
-            <option value="star">별</option>
-            <option value="circle">원</option>
-            <option value="moon">달</option>
-            <option value="arrow">화살표</option>
-          </select>
-          크기 <input id="d-p-size" type="number" step="0.5" min="2" max="8" class="w4">cm</div>
-        <div class="d-row"><label class="small"><input id="d-p-outline" type="checkbox"> 윤곽선만 오리기</label></div>
+          <button id="d-undo" class="small-btn">한 획 되돌리기</button>
+          <button id="d-clear" class="small-btn">그림 지우기</button>
+        </div>
       </div>
-      <p class="muted small">글자·그림을 드래그해서 옮길 수 있어요.</p>
+      <p class="muted small">글자는 드래그로 옮기고,<br>그림은 [그리기]를 누른 뒤 마우스로 그려요.</p>
     </aside>
     <div class="panel-center scrollable">
       <canvas id="design-canvas"></canvas>
@@ -177,7 +190,7 @@
       <h3>내가 정한 순서</h3>
       <div id="order-seq"></div>
       <div class="tool-row">
-        <button id="btn-order-run" class="primary" disabled>▶ 순서대로 실행</button>
+        <button id="btn-order-run" class="primary" disabled>순서대로 실행</button>
         <button id="btn-order-reset">처음부터</button>
       </div>
       <div id="order-result"></div>
@@ -187,13 +200,8 @@
   <!-- 미리보기 탭 -->
   <section id="tab-preview" class="tab-panel">
     <div class="panel-center">
+      <h3 class="preview-title">완성 모습 미리보기 <button class="faq-btn" data-faqtab="preview">?</button></h3>
       <canvas id="preview-canvas"></canvas>
-      <div class="tool-row dark-row">
-        <span>☀️ 낮</span>
-        <input id="dark-slider" type="range" min="0" max="100" value="70">
-        <span>🌙 밤</span>
-        <button class="faq-btn" data-faqtab="preview">?</button>
-      </div>
       <div id="preview-msg"></div>
     </div>
   </section>
@@ -203,7 +211,8 @@
 <div id="faq-modal" class="modal hidden">
   <div class="modal-box">
     <button id="faq-close" class="close-x">✕</button>
-    <h2>❓ 도움말</h2>
+    <h2>도움말</h2>
+    <details id="faq-rubric-box"><summary>평가 기준 보기</summary><div id="faq-rubric"></div></details>
     <input id="faq-search" placeholder="궁금한 것을 검색해 보세요 (예: 배점, 크기, LED)">
     <div id="faq-list"></div>
   </div>
@@ -223,7 +232,7 @@
 <div id="admin-modal" class="modal hidden">
   <div class="modal-box admin-box">
     <button id="adm-close" class="close-x">✕</button>
-    <h2>🛠 관리자 모드</h2>
+    <h2>관리자 모드</h2>
     <div id="adm-pin-gate" class="hidden">
       <p>관리자 PIN을 입력하세요.</p>
       <input id="adm-pin" type="password" placeholder="PIN">
@@ -239,8 +248,13 @@
         <button id="adm-export">내보내기(복사)</button>
         <button id="adm-import">불러오기</button>
       </details>
-      <details><summary>학생 작업 보기</summary>
-        <button id="adm-works-reload">새로고침</button>
+      <details><summary>평가 기준 (배점표)</summary>
+        <p class="muted small">영역·조건·배점을 자유롭게 수정하세요. 학생에게는 도움말의 [평가 기준 보기]로 보입니다. 저장은 위의 [설정 저장].</p>
+        <div id="adm-rubric"></div>
+        <button id="adm-rubric-add">+ 평가 영역 추가</button>
+      </details>
+      <details><summary>학생 작업 보기 (자동 새로고침)</summary>
+        <button id="adm-works-reload">지금 새로고침</button>
         <div id="adm-works"></div>
       </details>
       <details><summary>FAQ 편집</summary>
