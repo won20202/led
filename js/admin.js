@@ -1,7 +1,8 @@
 // 관리자 모드: 로그인 화면의 [관리자] 버튼 또는 URL ?admin=1 → PIN 입력.
 import { config, saveConfig, exportConfigCode, importConfigCode, getMisses, clearMisses,
          cloudList, cloudListBan, cloudGet, cloudDelete, setReadOnlyWork, DEFAULT_CONFIG, DEFAULT_RUBRIC,
-         sheetLogFor, sheetFlushNow, todayCode, classSessionCode, studentDayCode } from './state.js';
+         sheetLogFor, sheetFlushNow, todayCode, classSessionCode, studentDayCode,
+         makeSid, parseSid } from './state.js';
 
 const $ = id => document.getElementById(id);
 
@@ -9,6 +10,10 @@ const FIELDS = [
   ['grade', '학년', 'number'],
   ['banCount', '반 수', 'number'],
   ['numCount', '한 반의 최대 번호', 'number'],
+  ['banDigits', '학번의 반 자리수 (10반 이상이면 2, 9반 이하 학교는 1)', 'number'],
+  ['numDigits', '학번의 번호 자리수 (보통 2)', 'number'],
+  ['excludedSids', '명단 제외 학번 (전출 등 — 쉼표 구분, 예: 20627)', 'text'],
+  ['extraSids', '추가 학번 (전입생 등 — 번호 범위 밖이어도 입장 허용)', 'text'],
   ['thickness', '재료(우드락) 두께 (cm)', 'number'],
   ['targetW', '완성 목표 가로 (cm)', 'number'],
   ['targetH', '완성 목표 세로 (cm)', 'number'],
@@ -311,7 +316,18 @@ async function loadBanBoard(ban) {
     const byNum = {};
     rows.forEach(r => byNum[r.num] = r);
     const att = getAtt();
-    grid.innerHTML = Array.from({ length: config.numCount }, (_, i) => i + 1).map(num => {
+    // 명단: 1~최대 번호 + 이 반의 추가 학번(전입생), 제외 학번(전출)은 표시만 바꾼다
+    const sidOf = num => makeSid(+ban, num);
+    const parseList = s => String(s || '').split(',').map(x => x.trim()).filter(Boolean);
+    const excluded = new Set(parseList(config.excludedSids));
+    const extraNums = parseList(config.extraSids)
+      .map(x => parseSid(x))
+      .filter(p => p && p.ban === +ban)
+      .map(p => p.num);
+    const roster = [...new Set([...Array.from({ length: config.numCount }, (_, i) => i + 1), ...extraNums])].sort((a, b) => a - b);
+    grid.innerHTML = roster.map(num => {
+      if (excluded.has(sidOf(num)))
+        return `<div class="stu-card off"><div class="stu-head"><b>${num}번</b><span class="muted small">전출·제외</span></div></div>`;
       const r = byNum[num];
       const a = att[`${ban}-${num}`];
       const attHtml = a ? `<div class="att-badge">${esc(a)}</div>` : '';

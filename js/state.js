@@ -75,6 +75,9 @@ export const DEFAULT_CONFIG = {
   overLimit: 'warn',        // 'warn' | 'block'
   // 학교 기본 정보 — 해마다 바꿔 쓴다
   grade: 2, banCount: 10, numCount: 35,
+  banDigits: 2, numDigits: 2, // 학번 체계: 반·번호 자리수 (예: 20627 = 반 2자리 / 2527 = 반 1자리)
+  excludedSids: '',   // 전출 등 명단 제외 학번 (쉼표 구분, 예: 20627, 20315)
+  extraSids: '',      // 전입생 등 추가 학번 — 번호 범위 밖이어도 입장 허용
   // 입장 방식: none(코드 없음) | fixed(고정 코드) | daily(매일 바뀜) | session(수업 코드: 반·교시 지정)
   entryMode: 'none',
   classCode: '',            // fixed 모드에서 쓰는 고정 코드
@@ -123,6 +126,20 @@ function codeOf(...parts) {
 }
 // 일일 코드 (전체 공용, 그날 하루)
 export function todayCode() { return codeOf('day', dateStr()); }
+// "20627, 20315" 같은 학번 목록에 포함되는지
+export function sidInList(listStr, sid) {
+  return String(listStr || '').split(',').map(s => s.trim()).filter(Boolean).includes(sid);
+}
+// 학번 ↔ 학년/반/번호 (자리수는 관리자 설정을 따른다)
+export function sidLength() { return 1 + config.banDigits + config.numDigits; }
+export function parseSid(sid) {
+  const bd = config.banDigits, nd = config.numDigits;
+  if (!new RegExp(`^\\d{${1 + bd + nd}}$`).test(sid)) return null;
+  return { grade: +sid[0], ban: +sid.slice(1, 1 + bd), num: +sid.slice(1 + bd) };
+}
+export function makeSid(ban, num) {
+  return `${config.grade}${String(ban).padStart(config.banDigits, '0')}${String(num).padStart(config.numDigits, '0')}`;
+}
 // 수업 코드: 특정 반 + 교시 범위 (p1, p2는 0부터)
 export function classSessionCode(ban, p1, p2) { return codeOf('ban', dateStr(), ban, p1, p2); }
 // 미실시자 개인 코드: 특정 학생, 그날 하루

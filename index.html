@@ -14,11 +14,10 @@
     <h1>LED 플래카드 설계 시뮬레이터</h1>
     <p class="muted">2학년 제조 기술 문제해결 수행평가</p>
     <div class="login-row">
-      <select id="login-ban"></select>
-      <select id="login-num"></select>
+      <input id="login-sid" inputmode="numeric" maxlength="5" placeholder="학번 (예: 20627)">
     </div>
     <div class="login-row" id="login-code-row">
-      <input id="login-code" placeholder="반 코드 (선생님이 알려줌)">
+      <input id="login-code" inputmode="numeric" maxlength="8" placeholder="입장 코드 (선생님이 알려줌)">
     </div>
     <p id="login-err" class="warn"></p>
     <button id="login-btn" class="primary big">시작하기</button>

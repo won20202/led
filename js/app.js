@@ -1,6 +1,6 @@
 // 앱 진입점: 로그인(반·번호) → 탭 화면
 import { config, login, student, onCloudStatus, sheetLog, todayCode,
-         sessionCodeValid, studentDayCode } from './state.js';
+         sessionCodeValid, studentDayCode, sidInList, parseSid, makeSid, sidLength } from './state.js';
 import { initCase, refreshFromWork } from './case3d.js';
 import { initCircuit, refreshCircuit } from './circuit.js';
 import { initDesign, refreshDesign } from './design.js';
@@ -12,22 +12,41 @@ import { initAdmin, openAdmin } from './admin.js';
 const $ = id => document.getElementById(id);
 
 function setupLogin() {
-  const banSel = $('login-ban'), numSel = $('login-num');
-  banSel.innerHTML = Array.from({ length: config.banCount }, (_, i) => `<option value="${i + 1}">${i + 1}반</option>`).join('');
-  numSel.innerHTML = Array.from({ length: config.numCount }, (_, i) => `<option value="${i + 1}">${i + 1}번</option>`).join('');
   $('login-code-row').style.display = config.entryMode !== 'none' ? '' : 'none';
+  // 학번 자리수는 학교 체계 설정을 따른다 (예: 반 2자리 20627, 반 1자리 2527)
+  const example = makeSid(Math.min(6, config.banCount), 27);
+  $('login-sid').placeholder = `학번 (예: ${example})`;
+  $('login-sid').maxLength = sidLength();
 
   try {
-    const last = JSON.parse(localStorage.getItem('lps_last') || 'null');
-    if (last) { banSel.value = last.ban; numSel.value = last.num; }
+    const last = localStorage.getItem('lps_last_sid');
+    if (last) $('login-sid').value = last;
   } catch (e) { /* ignore */ }
 
   $('login-admin').addEventListener('click', openAdmin);
   $('header-admin').addEventListener('click', openAdmin);
+  ['login-sid', 'login-code'].forEach(id =>
+    $(id).addEventListener('keydown', e => { if (e.key === 'Enter') $('login-btn').click(); }));
 
   $('login-btn').addEventListener('click', () => {
+    const sid = $('login-sid').value.trim();
+    const p = parseSid(sid);
+    if (!p) {
+      $('login-err').textContent = `학번 ${sidLength()}자리를 입력하세요. 예: ${config.grade}학년 ${Math.min(6, config.banCount)}반 27번 → ${makeSid(Math.min(6, config.banCount), 27)}`;
+      return;
+    }
+    if (sidInList(config.excludedSids, sid)) {
+      $('login-err').textContent = '이 학번은 명단에서 제외되어 있어요. 선생님께 문의하세요.';
+      return;
+    }
+    const isExtra = sidInList(config.extraSids, sid); // 전입생 등 추가 등록 학번
+    if (!isExtra &&
+        (p.grade !== config.grade || p.ban < 1 || p.ban > config.banCount || p.num < 1 || p.num > config.numCount)) {
+      $('login-err').textContent = `학번을 다시 확인해 보세요. (${config.grade}학년 1~${config.banCount}반, 1~${config.numCount}번)`;
+      return;
+    }
     const entered = $('login-code').value.trim();
-    const ban = parseInt(banSel.value), num = parseInt(numSel.value);
+    const ban = p.ban, num = p.num;
     let codeOk = true, errMsg = '';
     if (config.entryMode === 'fixed') {
       codeOk = entered === config.classCode;
@@ -40,7 +59,7 @@ function setupLogin() {
       errMsg = '지금 시간, 우리 반의 입장 코드가 아닙니다. 반과 번호를 맞게 골랐는지, 코드를 바르게 적었는지 확인하세요.';
     }
     if (!codeOk) { $('login-err').textContent = errMsg; return; }
-    localStorage.setItem('lps_last', JSON.stringify({ ban, num }));
+    localStorage.setItem('lps_last_sid', sid);
     login(ban, num);
     sheetLog('접속', '');
     $('student-badge').textContent = `${config.grade}학년 ${ban}반 ${num}번`;
