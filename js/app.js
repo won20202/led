@@ -1,5 +1,5 @@
 // 앱 진입점: 로그인(반·번호) → 탭 화면
-import { config, login, student, onCloudStatus } from './state.js';
+import { config, login, student, onCloudStatus, sheetLog } from './state.js';
 import { initCase, refreshFromWork } from './case3d.js';
 import { initCircuit, refreshCircuit } from './circuit.js';
 import { initDesign, refreshDesign } from './design.js';
@@ -22,6 +22,7 @@ function setupLogin() {
   } catch (e) { /* ignore */ }
 
   $('login-admin').addEventListener('click', openAdmin);
+  $('header-admin').addEventListener('click', openAdmin);
 
   $('login-btn').addEventListener('click', () => {
     if (config.classCode && $('login-code').value.trim() !== config.classCode) {
@@ -31,6 +32,7 @@ function setupLogin() {
     const ban = parseInt(banSel.value), num = parseInt(numSel.value);
     localStorage.setItem('lps_last', JSON.stringify({ ban, num }));
     login(ban, num);
+    sheetLog('접속', '');
     $('student-badge').textContent = `2학년 ${ban}반 ${num}번`;
     $('login-modal').classList.add('hidden');
     $('app').classList.remove('hidden');

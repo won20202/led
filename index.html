@@ -23,7 +23,7 @@
     <p id="login-err" class="warn"></p>
     <button id="login-btn" class="primary big">시작하기</button>
     <p class="muted small">이 프로그램은 결과만 보여줍니다. 계산과 판단은 여러분의 몫!<br>포트폴리오는 반드시 손으로 작성하세요.</p>
-    <button id="login-admin" class="link">관리자</button>
+    <button id="login-admin" class="admin-entry">관리자(교사)용 설정</button>
   </div>
 </div>
 
@@ -43,6 +43,7 @@
     <span class="head-right">
       <span id="cloud-dot" class="cloud-dot off" title="이 기기에만 저장됩니다"></span>
       <span id="student-badge"></span>
+      <button id="header-admin" class="link" title="교사용">관리자</button>
     </span>
   </header>
 
@@ -88,11 +89,8 @@
   <!-- 회로 탭 -->
   <section id="tab-circuit" class="tab-panel">
     <aside class="panel-left">
-      <h3>설치할 면 <button class="faq-btn" data-faqtab="circuit">?</button></h3>
-      <div id="surf-sel" class="tools">
-        <button data-v="back" class="active">뒷면 (안쪽)</button>
-        <button data-v="band">옆면 둘레 띠</button>
-      </div>
+      <h3>회로 만들기 <button class="faq-btn" data-faqtab="circuit">?</button></h3>
+      <p class="muted small">케이스를 펼친 전개도 위에 회로를 만들어요.<br>접는 선(보라 점선)을 넘어 테이프를 이어도 돼요.</p>
       <h3>부품</h3>
       <div id="circuit-tools" class="tools">
         <button data-tool="select" class="active">선택·이동</button>
@@ -133,7 +131,7 @@
         <input id="in-predict-led" type="number" min="0" max="20" placeholder="개수">
         <p id="circuit-predict-hint" class="warn small"></p>
       </div>
-      <button id="btn-test" class="primary big">스위치 눌러 점등</button>
+      <button id="btn-test" class="primary big">스위치 켜기</button>
     </aside>
     <div class="panel-center scrollable">
       <canvas id="circuit-canvas"></canvas>

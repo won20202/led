@@ -191,3 +191,15 @@ button.link:hover { color: #4a5561; background: transparent; }
 .mat-chip { display: inline-block; width: 12px; height: 12px; border-radius: 4px; margin-right: 6px; vertical-align: -1px; border: 1px solid rgba(0,0,0,0.12); }
 .mat-tip { color: #7a5f14 !important; background: #fdf6dd; border-radius: 6px; padding: 4px 6px !important; margin-top: 6px !important; }
 #tool-fact { margin-top: 8px; line-height: 1.5; min-height: 0; }
+
+/* 관리자 진입 버튼 */
+.admin-entry { margin-top: 16px; font-size: 12px; color: #5a6474; border-color: #d8dee8; }
+#header-admin { margin: 0; font-size: 12px; }
+
+/* 스위치 버튼 켜짐 상태 */
+#btn-test.on { background: #37c26e; border-color: #37c26e; }
+#btn-test.on:hover { background: #2da75d; }
+
+/* 예측 표: 점이 숫자 옆에 오도록 */
+.predict-table td { white-space: nowrap; font-size: 12.5px; padding: 4px 4px; }
+.predict-table .ok, .predict-table .warn { background: none; padding: 0; }

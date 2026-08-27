@@ -76,6 +76,7 @@ export const DEFAULT_CONFIG = {
   classCode: '',            // 빈 값이면 반 코드 검사 안 함
   adminPin: '2026',
   supabaseUrl: '', supabaseKey: '',
+  sheetUrl: '',             // Google Apps Script 웹 앱 URL — 설정하면 학생 활동·피드백이 시트에 기록됨
   faq: DEFAULT_FAQ,
 };
 
@@ -173,8 +174,34 @@ export function addLog(line) {
   if (readOnly) return;
   work.log.push(`${work.log.length + 1}차 · ${line}`);
   if (work.log.length > 60) work.log.shift();
+  sheetLog('설계 일지', line);
   touch();
 }
+
+// ---- Google Sheet 기록 (교사 분석용, 설정된 경우에만) ----
+// Apps Script 웹 앱으로 12초 간격 묶음 전송. 실패해도 조용히 무시.
+let sheetQueue = [], flushTimer = null;
+export function sheetLog(event, detail) {
+  if (!config.sheetUrl || readOnly || !student) return;
+  sheetQueue.push({
+    ts: new Date().toISOString(),
+    id: `2-${student.ban}-${student.num}`,
+    event, detail: String(detail || '').slice(0, 500),
+  });
+  if (!flushTimer) flushTimer = setTimeout(flushSheet, 12000);
+}
+function flushSheet() {
+  flushTimer = null;
+  if (!sheetQueue.length || !config.sheetUrl) return;
+  const body = JSON.stringify(sheetQueue.splice(0));
+  try {
+    fetch(config.sheetUrl, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain' }, body });
+  } catch (e) { /* ignore */ }
+}
+window.addEventListener('beforeunload', () => {
+  if (sheetQueue.length && config.sheetUrl && navigator.sendBeacon)
+    navigator.sendBeacon(config.sheetUrl, JSON.stringify(sheetQueue.splice(0)));
+});
 
 // ---- FAQ 못 찾은 검색어 ----
 export function recordMiss(q) {
@@ -183,6 +210,7 @@ export function recordMiss(q) {
     arr.push({ q, t: Date.now() });
     localStorage.setItem(MISS_KEY, JSON.stringify(arr.slice(-200)));
   } catch (e) { /* ignore */ }
+  sheetLog('도움말 검색(답 없음)', q);
 }
 export function getMisses() {
   try { return JSON.parse(localStorage.getItem(MISS_KEY) || '[]'); } catch (e) { return []; }

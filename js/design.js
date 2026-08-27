@@ -1,6 +1,6 @@
 // 도안 탭: 검은 앞면에 글자 2개 + 직접 그리는 그림. 오려낼 부분과 떨어져 나가는 안쪽 조각을 보여준다.
 // 처리 방법(다리 만들기·재부착)은 알려주지 않는다 — 학생이 정한다.
-import { config, work, touch, readOnly } from './state.js';
+import { config, work, touch, readOnly, sheetLog } from './state.js';
 
 const $ = id => document.getElementById(id);
 const S = 24;   // 표시용 px/cm
@@ -8,6 +8,7 @@ const RA = 8;   // 분석용 px/cm
 const FONT = '"Noto Sans CJK KR","Noto Sans KR","Malgun Gothic","Segoe UI Symbol",sans-serif';
 
 let cv, ctx, mode = 'move';  // 'move' | 'draw' | 'erase'
+let lastFeedbackKey = '';
 let selected = -1, dragOff = null;
 let drawingStroke = null;
 let analysis = null;
@@ -242,7 +243,7 @@ function draw() {
 function updatePanel() {
   const a = analysis, el = $('design-info');
   if (!a) { el.innerHTML = ''; return; }
-  let html = `<p class="measure">현재 도안 — 잘라낼 길이 약 <b>${a.perimeter}cm</b></p>`;
+  let html = ''; // 잘라낼 길이 등 수치 표시는 부담을 줄 수 있어 하지 않는다
   if (a.islandCount > 0)
     html += `<p class="warn"><span class="dot red"></span> 오리면 떨어져 나가는 안쪽 조각이 ${a.islandCount}개 있습니다. 이 조각들을 어떻게 처리할지 포트폴리오에 적어 보세요.</p>`;
   const warns = [];
@@ -280,6 +281,10 @@ function updatePanel() {
   if (!warns.length && (D().letters[0].text || D().letters[1].text))
     html += `<p class="ok">조건에 잘 맞습니다. 빛이 어떻게 새어 나올지는 [미리보기] 탭에서 확인하세요.</p>`;
   el.innerHTML = html;
+  // 교사 분석용: 어떤 피드백이 떴는지 기록 (같은 내용 반복 기록 방지)
+  const key = warns.join('|') + (a.islandCount ? `|섬${a.islandCount}` : '');
+  if (key && key !== lastFeedbackKey) sheetLog('도안 피드백', warns.join(' / ') || `안쪽 조각 ${a.islandCount}개`);
+  lastFeedbackKey = key;
 }
 
 let analyzeTimer = null;

@@ -28,7 +28,6 @@ const FIELDS = [
   ['pictoMax', '그림 크기 최대 (cm)', 'number'],
   ['boardW', '우드락 판 가로 (cm)', 'number'],
   ['boardH', '우드락 판 세로 (cm)', 'number'],
-  ['showSupply', '지급 재료 수량 표시', 'checkbox'],
   ['showMeasure', '실측값 표시', 'checkbox'],
   ['askPredict', '예측 먼저 (조립·점등 전 예측 입력)', 'checkbox'],
   ['questionFeedback', '질문형 피드백 표시', 'checkbox'],
@@ -36,6 +35,7 @@ const FIELDS = [
   ['adminPin', '관리자 PIN', 'text'],
   ['supabaseUrl', 'Supabase URL (비우면 이 기기에만 저장)', 'text'],
   ['supabaseKey', 'Supabase anon key', 'text'],
+  ['sheetUrl', 'Google Sheet 기록 URL (Apps Script 배포 주소, README 참고)', 'text'],
 ];
 
 function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;'); }

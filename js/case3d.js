@@ -251,7 +251,8 @@ function assemble(logIt) {
     html += `<p class="muted">완성 목표 — ${config.targetW} × ${config.targetH} × ${config.targetD} cm</p>`;
   if (overlapN) html += `<p class="warn"><span class="dot red"></span> 판이 겹쳐 튀어나온 곳이 ${overlapN}군데 있습니다. 어느 조각을 얼마나 줄여야 할까요?</p>`;
   if (gapN) html += `<p class="warn"><span class="dot yellow"></span> 판 사이가 벌어진 틈이 보입니다. 어느 조각이 짧은 걸까요?</p>`;
-  if (!overlapN && !gapN) html += `<p class="ok">겹침과 틈 없이 조립되었습니다. 완성 크기가 의도한 값인지 확인해 보세요.</p>`;
+  // 정답 판정처럼 들리는 칭찬 문구는 쓰지 않는다 — 목표와의 비교·판단은 학생 몫
+  if (!overlapN && !gapN) html += `<p class="hint">케이스를 돌려서 여러 방향에서 살펴보세요. 실측값이 여러분이 목표한 완성 크기와 같은가요? 포트폴리오의 전개도 치수와도 비교해 보세요.</p>`;
 
   // 예측 비교
   const pr = work.caseTab.predict;
@@ -265,8 +266,7 @@ function assemble(logIt) {
 
   if (logIt) {
     addLog(`뒷면 ${back.w}×${back.h}, 옆면 ${side.w}×${side.h}, 위아래 ${topbot.w}×${topbot.h} → 완성 ${f(W)}×${f(H)}×${f(D)}` +
-      (overlapN ? ` (겹침 ${overlapN}곳)` : '') + (gapN ? ' (틈 있음)' : '') +
-      (!overlapN && !gapN ? ' ✓' : ''));
+      (overlapN ? ` (겹침 ${overlapN}곳)` : '') + (gapN ? ' (틈 있음)' : ''));
     renderLogList();
   }
   work.caseTab.assembled = true;

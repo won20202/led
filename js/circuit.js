@@ -1,7 +1,8 @@
-// 회로 탭: 설치할 면(뒷면 안쪽 / 옆면 둘레 띠)을 골라 평면에서 회로를 만들고,
-// [입체로 보기]로 조립된 모습을 확인한다. 전지는 화면 아래 고정 — 전선(+,−) 끝만 끌어다 붙인다.
-// 홀더를 "어디에 붙일지"는 조립 순서 탭에서 다룬다.
-import { config, work, addLog, touch, readOnly } from './state.js';
+// 회로 탭: 케이스를 펼친 전개도(뒷면 + 네 옆면) 위에 회로를 만들고,
+// [입체로 보기]로 조립된 모습을 확인한다. 연결 여부는 "접었을 때의 실제 거리"로 판단하므로
+// 테이프가 접히는 모서리를 넘어가도, 면과 면이 만나는 곳에서도 자연스럽게 이어진다.
+// 스위치를 켜야 불이 들어온다. 배치를 바꾸면 스위치는 다시 꺼진다.
+import { config, work, addLog, touch, readOnly, sheetLog } from './state.js';
 import { renderLogList } from './case3d.js';
 
 const $ = id => document.getElementById(id);
@@ -16,9 +17,8 @@ export const MAGIC = {
 };
 
 let cv, ctx, tool = 'select';
-let view = 'back';           // 'back' | 'band'
 let view3d = false;
-let Z = 16;
+let Z = 15;
 let drawingTape = null;
 let selected = null;
 let dragOff = null;
@@ -35,39 +35,92 @@ function dims() {
     tw: num(p.topbot.w) || 24, td: num(p.topbot.h) || 4.5,
   };
 }
-function bandLen(d) { return 2 * (d.tw + d.sh); }
-function surfSize(surf) {
+// 전개도의 면들 (뒷면 기준 좌표계, 십자 모양)
+function faces() {
   const d = dims();
-  return surf === 'back' ? { w: d.bw, h: d.bh } : { w: bandLen(d), h: d.td };
+  const cy0 = (d.bh - d.sh) / 2;
+  return {
+    back: { x0: 0, y0: 0, x1: d.bw, y1: d.bh, label: '뒷면 (안쪽)' },
+    top: { x0: 0.5, y0: -d.td, x1: 0.5 + d.tw, y1: 0, label: '윗면' },
+    bottom: { x0: 0.5, y0: d.bh, x1: 0.5 + d.tw, y1: d.bh + d.td, label: '아랫면' },
+    left: { x0: -d.sw, y0: cy0, x1: 0, y1: cy0 + d.sh, label: '왼쪽 옆면' },
+    right: { x0: d.bw, y0: cy0, x1: d.bw + d.sw, y1: cy0 + d.sh, label: '오른쪽 옆면' },
+  };
 }
-// 전지 블록 (면 아래 고정)
+function faceOf(p) {
+  const F = faces();
+  for (const k of Object.keys(F)) {
+    const f = F[k];
+    if (p.x >= f.x0 - 0.01 && p.x <= f.x1 + 0.01 && p.y >= f.y0 - 0.01 && p.y <= f.y1 + 0.01) return k;
+  }
+  return null;
+}
+// 전개도 밖으로 나가지 않게: 가장 가까운 면 안으로 넣는다
+function clampNet(p) {
+  if (faceOf(p)) return { x: p.x, y: p.y };
+  const F = faces();
+  let best = null, bd = Infinity;
+  for (const k of Object.keys(F)) {
+    const f = F[k];
+    const q = { x: Math.min(Math.max(p.x, f.x0), f.x1), y: Math.min(Math.max(p.y, f.y0), f.y1) };
+    const dd = Math.hypot(q.x - p.x, q.y - p.y);
+    if (dd < bd) { bd = dd; best = q; }
+  }
+  return best;
+}
+// 부품(다리 포함)이 한 면 안에 들어오게
+function clampPart(p, dir) {
+  const q = clampNet(p);
+  const k = faceOf(q) || 'back';
+  const f = faces()[k];
+  const vert = (dir || 0) % 2 === 0;
+  const ix = vert ? 0.4 : 1, iy = vert ? 1 : 0.4;
+  return {
+    x: Math.min(Math.max(q.x, f.x0 + ix), Math.max(f.x0 + ix, f.x1 - ix)),
+    y: Math.min(Math.max(q.y, f.y0 + iy), Math.max(f.y0 + iy, f.y1 - iy)),
+  };
+}
+// 전개도 좌표 → 접었을 때의 3D 좌표
+function to3Dp(p) {
+  const d = dims();
+  const q = clampNet(p);
+  const k = faceOf(q) || 'back';
+  if (k === 'back') return { X: q.x, Y: d.bh - q.y, Z: 0.15 };
+  if (k === 'top') return { X: q.x, Y: d.bh - 0.15, Z: -q.y };
+  if (k === 'bottom') return { X: q.x, Y: 0.15, Z: q.y - d.bh };
+  if (k === 'left') return { X: 0.15, Y: d.bh - q.y, Z: -q.x };
+  return { X: d.bw - 0.15, Y: d.bh - q.y, Z: q.x - d.bw };
+}
+const d3 = (a, b) => Math.hypot(a.X - b.X, a.Y - b.Y, a.Z - b.Z);
+
+// 전지 블록 (전개도 아래 고정)
 function battery() {
-  const s = surfSize(view);
-  return { x: 0.3, y: s.h + 1.0, w: 5.2, h: 1.7, tp: { x: 1.4, y: s.h + 1.0 }, tm: { x: 4.4, y: s.h + 1.0 } };
+  const d = dims();
+  const y = d.bh + d.td + 0.9;
+  return { x: 0.5 - d.sw, y, w: 5.6, h: 1.8,
+    tp: { x: 0.5 - d.sw + 1.3, y }, tm: { x: 0.5 - d.sw + 4.3, y },
+    sw: { x: 0.5 - d.sw + 5.6 + 1.6, y: y + 0.9 } }; // 스위치 원 중심
 }
 
 const MARGIN = 0.8;
 function toCm(e) {
   const r = cv.getBoundingClientRect();
-  return { x: (e.clientX - r.left) * (cv.width / r.width) / Z - MARGIN, y: (e.clientY - r.top) * (cv.height / r.height) / Z - MARGIN };
-}
-const snap = v => Math.round(v * 2) / 2;
-function clampPt(p, surf) {
-  const s = surfSize(surf);
-  return { x: Math.min(Math.max(p.x, 0), s.w), y: Math.min(Math.max(p.y, 0), s.h) };
-}
-function clampPart(p, dir, surf) {
-  const s = surfSize(surf);
-  const vert = dir % 2 === 0;
-  const ix = vert ? 0.4 : 1, iy = vert ? 1 : 0.4;
+  const d = dims();
   return {
-    x: Math.min(Math.max(p.x, ix), Math.max(ix, s.w - ix)),
-    y: Math.min(Math.max(p.y, iy), Math.max(iy, s.h - iy)),
+    x: (e.clientX - r.left) * (cv.width / r.width) / Z - MARGIN - d.sw,
+    y: (e.clientY - r.top) * (cv.height / r.height) / Z - MARGIN - d.td,
   };
 }
+const snap = v => Math.round(v * 2) / 2;
+
 function legs(o) {
-  const d = [[0, -1], [1, 0], [0, 1], [-1, 0]][o.dir || 0];
-  return { a: { x: o.x + d[0], y: o.y + d[1] }, k: { x: o.x - d[0], y: o.y - d[1] } };
+  const dd = [[0, -1], [1, 0], [0, 1], [-1, 0]][o.dir || 0];
+  return { a: { x: o.x + dd[0], y: o.y + dd[1] }, k: { x: o.x - dd[0], y: o.y - dd[1] } };
+}
+function tapeLen(tape) {
+  let L = 0;
+  for (let i = 0; i < tape.pts.length - 1; i++) L += Math.hypot(tape.pts[i + 1].x - tape.pts[i].x, tape.pts[i + 1].y - tape.pts[i].y);
+  return L;
 }
 function distSeg(p, a, b) {
   const dx = b.x - a.x, dy = b.y - a.y;
@@ -77,94 +130,104 @@ function distSeg(p, a, b) {
   t = Math.max(0, Math.min(1, t));
   return Math.hypot(p.x - a.x - t * dx, p.y - a.y - t * dy);
 }
-function distTape(p, tape, shift = 0) {
-  let d = Infinity;
-  for (let i = 0; i < tape.pts.length - 1; i++)
-    d = Math.min(d, distSeg({ x: p.x - shift, y: p.y }, tape.pts[i], tape.pts[i + 1]));
-  return d;
+function distTape2D(p, tape) {
+  let dd = Infinity;
+  for (let i = 0; i < tape.pts.length - 1; i++) dd = Math.min(dd, distSeg(p, tape.pts[i], tape.pts[i + 1]));
+  return dd;
 }
-function tapeLen(tape) {
-  let L = 0;
-  for (let i = 0; i < tape.pts.length - 1; i++) L += Math.hypot(tape.pts[i + 1].x - tape.pts[i].x, tape.pts[i + 1].y - tape.pts[i].y);
-  return L;
+// 테이프를 0.5cm 간격의 3D 점들로 샘플링 — 연결 판정용
+function sampleTape3D(tape) {
+  const out = [];
+  for (let i = 0; i < tape.pts.length - 1; i++) {
+    const a = tape.pts[i], b = tape.pts[i + 1];
+    const n = Math.max(1, Math.ceil(Math.hypot(b.x - a.x, b.y - a.y) / 0.5));
+    for (let k = 0; k <= n; k++)
+      out.push(to3Dp({ x: a.x + (b.x - a.x) * k / n, y: a.y + (b.y - a.y) * k / n }));
+  }
+  return out;
 }
-function segSegClose(a1, a2, b1, b2, r) {
-  // ponytail: 표본점 근사 — 0.5cm 격자 스냅이라 충분
-  const at = t => ({ x: a1.x + (a2.x - a1.x) * t, y: a1.y + (a2.y - a1.y) * t });
-  for (const t of [0, 0.25, 0.5, 0.75, 1]) if (distSeg(at(t), b1, b2) < r) return true;
-  const bt = t => ({ x: b1.x + (b2.x - b1.x) * t, y: b1.y + (b2.y - b1.y) * t });
-  for (const t of [0.25, 0.5, 0.75]) if (distSeg(bt(t), a1, a2) < r) return true;
-  return false;
-}
-function tapesTouch(t1, t2, wrapL) {
-  const shifts = t1.surf === 'band' && wrapL ? [0, wrapL, -wrapL] : [0];
-  for (const s of shifts)
-    for (let i = 0; i < t1.pts.length - 1; i++)
-      for (let j = 0; j < t2.pts.length - 1; j++) {
-        const p1 = { x: t1.pts[i].x + s, y: t1.pts[i].y }, p2 = { x: t1.pts[i + 1].x + s, y: t1.pts[i + 1].y };
-        if (segSegClose(p1, p2, t2.pts[j], t2.pts[j + 1], 0.55)) return true;
-      }
-  return false;
-}
+
+// 옛 데이터 보정 (뒷면/띠 분리 시절 → 전개도 좌표)
 function normalize(C) {
   C.resistors = C.resistors || [];
-  C.tapes.forEach(t => t.surf = t.surf || 'back');
-  C.leds.forEach(l => l.surf = l.surf || 'back');
-  C.resistors.forEach(r => r.surf = r.surf || 'back');
-  if (!C.holder || !C.holder.wires) C.holder = { wires: [{ surf: 'dock' }, { surf: 'dock' }] };
-  C.holder.wires.forEach(w => { if (w.surf !== 'back' && w.surf !== 'band') w.surf = 'dock'; });
+  const d = dims();
+  const t1 = d.tw, t2 = d.tw + d.sh, t3 = 2 * d.tw + d.sh, L = 2 * (d.tw + d.sh);
+  const conv = o => {
+    if (o.surf === 'band' && o.x !== undefined) {
+      const u = ((o.x % L) + L) % L, v = o.y;
+      if (u < t1) { o.x = 0.5 + u; o.y = -v; }
+      else if (u < t2) { o.x = d.bw + v; o.y = (d.bh - d.sh) / 2 + (u - t1); }
+      else if (u < t3) { o.x = 0.5 + (t3 - u); o.y = d.bh + v; }
+      else { o.x = -v; o.y = (d.bh - d.sh) / 2 + (L - u); }
+    }
+    delete o.surf;
+  };
+  C.tapes.forEach(t => { if (t.surf === 'band') t.pts.forEach(p => conv({ ...p, surf: 'band' })); delete t.surf; });
+  C.leds.forEach(conv);
+  C.resistors.forEach(conv);
+  if (!C.holder || !C.holder.wires) C.holder = { wires: [{ dock: true }, { dock: true }] };
+  C.holder.wires.forEach(w => {
+    if (w.surf === 'dock' || (w.x === undefined && !w.dock)) { w.dock = true; }
+    delete w.surf;
+  });
 }
 
 // ---------- 회로 해석 (교육용 근사: I = (Vs − k·Vf) / (Rint + R저항합)) ----------
 function solve() {
   const C = work.circuit;
   normalize(C);
-  const d = dims(), wrapL = bandLen(d);
   const n = C.tapes.length;
   const P = n, M = n + 1;
   const parent = Array.from({ length: n + 2 }, (_, i) => i);
   const find = x => parent[x] === x ? x : (parent[x] = find(parent[x]));
   const union = (a, b) => { parent[find(a)] = find(b); };
 
+  const samples = C.tapes.map(sampleTape3D);
   for (let i = 0; i < n; i++)
-    for (let j = i + 1; j < n; j++)
-      if (C.tapes[i].surf === C.tapes[j].surf && tapesTouch(C.tapes[i], C.tapes[j], wrapL)) union(i, j);
+    for (let j = i + 1; j < n; j++) {
+      let hit = false;
+      for (const a of samples[i]) {
+        for (const b of samples[j]) if (d3(a, b) < 0.65) { hit = true; break; }
+        if (hit) break;
+      }
+      if (hit) union(i, j);
+    }
 
-  const res = { plus: -1, minus: -1, short: false, wiresOff: 0,
+  const res = { plus: -1, minus: -1, short: false, wiresOff: 0, on: C.tested,
     lit: {}, tapeComp: C.tapes.map((_, i) => find(i)), energizedPlus: new Set(), energizedMinus: new Set(),
     hasBlockedSeries: false, dimSeries: false, noResistorLit: false, anyLit: false };
 
   const [wp, wm] = C.holder.wires;
-  res.wiresOff = (wp.surf === 'dock' ? 1 : 0) + (wm.surf === 'dock' ? 1 : 0);
+  res.wiresOff = (wp.dock ? 1 : 0) + (wm.dock ? 1 : 0);
 
-  const tapeNear = (p, surf) => {
-    for (let i = 0; i < n; i++) {
-      if (C.tapes[i].surf !== surf) continue;
-      const shifts = surf === 'band' ? [0, wrapL, -wrapL] : [0];
-      for (const s of shifts) if (distTape(p, C.tapes[i], s) < 0.6) return i;
-    }
+  const tapeNear3D = (p3) => {
+    for (let i = 0; i < n; i++)
+      for (const s of samples[i]) if (d3(p3, s) < 0.7) return i;
     return -1;
   };
-  if (wp.surf !== 'dock') { const t = tapeNear(wp, wp.surf); if (t >= 0) union(P, t); }
-  if (wm.surf !== 'dock') { const t = tapeNear(wm, wm.surf); if (t >= 0) union(M, t); }
-  if (wp.surf !== 'dock' && wp.surf === wm.surf && Math.hypot(wp.x - wm.x, wp.y - wm.y) < 0.7) union(P, M);
+  const wp3 = wp.dock ? null : to3Dp(wp);
+  const wm3 = wm.dock ? null : to3Dp(wm);
+  if (wp3) { const t = tapeNear3D(wp3); if (t >= 0) union(P, t); }
+  if (wm3) { const t = tapeNear3D(wm3); if (t >= 0) union(M, t); }
+  if (wp3 && wm3 && d3(wp3, wm3) < 0.7) union(P, M);
 
-  const nodeOf = (p, surf) => {
-    const t = tapeNear(p, surf);
+  const nodeOf = (p) => {
+    const p3 = to3Dp(p);
+    const t = tapeNear3D(p3);
     if (t >= 0) return find(t);
-    if (wp.surf === surf && Math.hypot(p.x - wp.x, p.y - wp.y) < 0.7) return find(P);
-    if (wm.surf === surf && Math.hypot(p.x - wm.x, p.y - wm.y) < 0.7) return find(M);
+    if (wp3 && d3(p3, wp3) < 0.7) return find(P);
+    if (wm3 && d3(p3, wm3) < 0.7) return find(M);
     return -1;
   };
 
   const edges = [];
   C.leds.forEach((l, i) => {
     const g = legs(l);
-    edges.push({ type: 'led', i, a: nodeOf(g.a, l.surf), k: nodeOf(g.k, l.surf) });
+    edges.push({ type: 'led', i, a: nodeOf(g.a), k: nodeOf(g.k) });
   });
   C.resistors.forEach((r, i) => {
     const g = legs(r);
-    edges.push({ type: 'res', i, a: nodeOf(g.a, r.surf), k: nodeOf(g.k, r.surf) });
+    edges.push({ type: 'res', i, a: nodeOf(g.a), k: nodeOf(g.k) });
   });
 
   res.plus = find(P); res.minus = find(M);
@@ -232,19 +295,12 @@ function solve() {
     }
   }
   res.anyLit = Object.keys(res.lit).length > 0;
+  // 스위치가 꺼져 있으면 불은 켜지지 않는다 (연결 상태 판정만 유지)
+  if (!C.tested) { res.wouldLit = res.lit; res.lit = {}; res.anyLit = false; }
   return res;
 }
 
 // ---------- 입체(조립된 모습) 그리기 — 조립 순서 탭에서도 재사용 ----------
-function to3D(pt, surf, d) {
-  if (surf === 'back') return { X: pt.x, Y: d.bh - pt.y, Z: 0.15 };
-  const t1 = d.tw, t2 = d.tw + d.sh, t3 = 2 * d.tw + d.sh, L = bandLen(d);
-  const u = ((pt.x % L) + L) % L, Zv = 0.3 + pt.y;
-  if (u < t1) return { X: 0.5 + u, Y: d.bh - 0.15, Z: Zv };
-  if (u < t2) return { X: d.bw - 0.15, Y: d.bh - (u - t1), Z: Zv };
-  if (u < t3) return { X: 0.5 + (t3 - u), Y: 0.15, Z: Zv };
-  return { X: 0.15, Y: u - t3, Z: Zv };
-}
 function makeProj(d, rx, ry, rw, rh) {
   const a = -0.62, b = 0.40;
   const ca = Math.cos(a), sa = Math.sin(a), cb = Math.cos(b), sb = Math.sin(b);
@@ -259,16 +315,16 @@ function makeProj(d, rx, ry, rw, rh) {
     return [cx + x1 * S3, cy - y2 * S3];
   };
 }
-// opts: {lit, circuit=true, walls='solid'|'ghost'|'dashed'|'none', label}
 export function drawAssembled(tctx, rx, ry, rw, rh, opts = {}) {
   const d = dims();
   const C = work.circuit;
   normalize(C);
   const R = solve();
+  const litSet = opts.lit ? (C.tested ? R.lit : (R.wouldLit || {})) : {};
   const pj = makeProj(d, rx, ry, rw, rh);
   const depth = d.td + 0.5;
   const walls = opts.walls || 'solid';
-  const lit = !!opts.lit;
+  const lit = !!opts.lit && Object.keys(litSet).length > 0;
 
   const quad = (pts, fill, stroke, dashed) => {
     tctx.beginPath();
@@ -284,25 +340,20 @@ export function drawAssembled(tctx, rx, ry, rw, rh, opts = {}) {
   const wallFill = c => walls === 'dashed' || walls === 'none' ? null : c;
   const line = walls === 'dashed' ? '#8a94a0' : '#7a8794';
 
-  const bg = lit ? 'rgba(16,19,30,0.92)' : null;
-  if (bg) { tctx.fillStyle = bg; tctx.fillRect(rx, ry, rw, rh); }
+  if (lit) { tctx.fillStyle = 'rgba(16,19,30,0.92)'; tctx.fillRect(rx, ry, rw, rh); }
 
-  // 뒷면
   quad([P3(0, 0, 0), P3(d.bw, 0, 0), P3(d.bw, d.bh, 0), P3(0, d.bh, 0)],
     wallFill(lit ? 'rgba(60,58,50,0.9)' : 'rgba(247,243,232,0.95)'), line, walls === 'dashed');
   if (walls !== 'none') {
-    // 윗면·아랫면·좌·우 옆벽 (반투명 — 안쪽 회로가 비쳐 보임)
     const wallC = lit ? `rgba(70,74,86,${wallAlpha})` : `rgba(228,238,247,${wallAlpha})`;
     quad([P3(0.5, d.bh, 0), P3(0.5 + d.tw, d.bh, 0), P3(0.5 + d.tw, d.bh, depth), P3(0.5, d.bh, depth)], wallFill(wallC), line, walls === 'dashed');
     quad([P3(0.5, 0, 0), P3(0.5 + d.tw, 0, 0), P3(0.5 + d.tw, 0, depth), P3(0.5, 0, depth)], wallFill(wallC), line, walls === 'dashed');
     quad([P3(0, 0, 0), P3(0, d.bh, 0), P3(0, d.bh, depth), P3(0, 0, depth)], wallFill(wallC), line, walls === 'dashed');
     quad([P3(d.bw, 0, 0), P3(d.bw, d.bh, 0), P3(d.bw, d.bh, depth), P3(d.bw, 0, depth)], wallFill(wallC), line, walls === 'dashed');
-    // 개구부(앞) 테두리
     quad([P3(0, 0, depth), P3(d.bw, 0, depth), P3(d.bw, d.bh, depth), P3(0, d.bh, depth)], null, '#a8b2bd', true);
   }
 
   if (opts.circuit !== false) {
-    // 테이프
     C.tapes.forEach((t, i) => {
       const comp = R.tapeComp[i];
       let col = lit ? '#b8bec8' : '#9aa0aa';
@@ -316,30 +367,27 @@ export function drawAssembled(tctx, rx, ry, rw, rh, opts = {}) {
       tctx.lineWidth = 3; tctx.lineCap = 'round'; tctx.lineJoin = 'round';
       tctx.beginPath();
       t.pts.forEach((p, j) => {
-        // 띠의 모서리를 넘는 구간이 자연스럽게 꺾이도록 중간점을 보간해 그린다
-        if (j === 0) { const s = pj(to3D(p, t.surf, d)); tctx.moveTo(s[0], s[1]); return; }
+        if (j === 0) { const s = pj(to3Dp(p)); tctx.moveTo(s[0], s[1]); return; }
         const prev = t.pts[j - 1];
-        const steps = t.surf === 'band' ? Math.max(1, Math.ceil(Math.hypot(p.x - prev.x, p.y - prev.y) / 1.5)) : 1;
+        const steps = Math.max(1, Math.ceil(Math.hypot(p.x - prev.x, p.y - prev.y) / 1.2));
         for (let k = 1; k <= steps; k++) {
           const q = { x: prev.x + (p.x - prev.x) * k / steps, y: prev.y + (p.y - prev.y) * k / steps };
-          const s = pj(to3D(q, t.surf, d));
+          const s = pj(to3Dp(q));
           tctx.lineTo(s[0], s[1]);
         }
       });
       tctx.stroke();
     });
-    // 저항
     C.resistors.forEach(r => {
-      const s = pj(to3D(r, r.surf, d));
+      const s = pj(to3Dp(r));
       tctx.fillStyle = '#c8a26a'; tctx.strokeStyle = '#8a6d3f';
       tctx.beginPath(); tctx.roundRect(s[0] - 8, s[1] - 4, 16, 8, 3); tctx.fill(); tctx.stroke();
     });
-    // LED
     C.leds.forEach((l, i) => {
-      const s = pj(to3D(l, l.surf, d));
-      const b = lit && R.lit[i] !== undefined ? R.lit[i] : 0;
+      const s = pj(to3Dp(l));
+      const b = litSet[i] !== undefined ? litSet[i] : 0;
       const mag = MAGIC[l.color || 'none'];
-      if (b > 0.02) {
+      if (lit && b > 0.02) {
         const halo = 8 + 26 * b;
         const g = tctx.createRadialGradient(s[0], s[1], 1, s[0], s[1], halo);
         g.addColorStop(0, `rgba(${mag.rgb[0]},${mag.rgb[1]},${mag.rgb[2]},${0.6 + 0.4 * b})`);
@@ -348,9 +396,9 @@ export function drawAssembled(tctx, rx, ry, rw, rh, opts = {}) {
         tctx.beginPath(); tctx.arc(s[0], s[1], halo, 0, 7); tctx.fill();
       }
       tctx.beginPath(); tctx.arc(s[0], s[1], 4, 0, 7);
-      tctx.fillStyle = b > 0.02 ? `rgb(${mag.rgb[0]},${mag.rgb[1]},${mag.rgb[2]})` : (lit ? '#5a606c' : '#d8d8d2');
+      tctx.fillStyle = lit && b > 0.02 ? `rgb(${mag.rgb[0]},${mag.rgb[1]},${mag.rgb[2]})` : (lit ? '#5a606c' : '#d8d8d2');
       tctx.fill();
-      tctx.strokeStyle = b > 0.02 ? '#fff' : '#767c85'; tctx.lineWidth = 1; tctx.stroke();
+      tctx.strokeStyle = lit && b > 0.02 ? '#fff' : '#767c85'; tctx.lineWidth = 1; tctx.stroke();
     });
   }
   if (opts.label) {
@@ -359,69 +407,67 @@ export function drawAssembled(tctx, rx, ry, rw, rh, opts = {}) {
   }
 }
 
-// ---------- 평면 편집 화면 ----------
+// ---------- 평면(전개도) 편집 화면 ----------
 function draw() {
   if (!ctx) return;
+  const d = dims();
   if (view3d) {
     const W = 680, H = 440;
     if (cv.width !== W || cv.height !== H) { cv.width = W; cv.height = H; }
     ctx.clearRect(0, 0, W, H);
     ctx.fillStyle = '#f4f6f9'; ctx.fillRect(0, 0, W, H);
     drawAssembled(ctx, 10, 10, W - 20, H - 20, {
-      lit: work.circuit.tested && solveResult && solveResult.anyLit,
+      lit: work.circuit.tested,
       walls: 'solid',
-      label: '조립된 모습 — 평면에서 붙인 회로가 이렇게 둘러집니다',
+      label: '조립된 모습 — 전개도에 붙인 회로가 이렇게 둘러집니다',
     });
     return;
   }
-  const s = surfSize(view);
   const bat = battery();
-  const W = Math.round((Math.max(s.w, bat.x + bat.w) + MARGIN * 2) * Z);
-  const H = Math.round((bat.y + bat.h + MARGIN * 2 + 0.4) * Z);
+  const W = Math.round((d.sw * 2 + d.bw + MARGIN * 2) * Z);
+  const H = Math.round((d.td + bat.y + bat.h + MARGIN * 2 + 0.5) * Z);
   if (cv.width !== W || cv.height !== H) { cv.width = W; cv.height = H; }
   ctx.clearRect(0, 0, W, H);
   ctx.save();
-  ctx.translate(MARGIN * Z, MARGIN * Z);
+  ctx.translate((MARGIN + d.sw) * Z, (MARGIN + d.td) * Z);
 
   const C = work.circuit, R = solveResult;
   const litMode = C.tested && R && (R.anyLit || R.short);
-  const d = dims();
 
-  const region = (x, y, w, h, label, c) => {
-    ctx.fillStyle = c; ctx.fillRect(x * Z, y * Z, w * Z, h * Z);
-    ctx.strokeStyle = '#c2cad3'; ctx.strokeRect(x * Z, y * Z, w * Z, h * Z);
+  // 전개도 면들
+  const F = faces();
+  for (const k of Object.keys(F)) {
+    const f = F[k];
+    ctx.fillStyle = k === 'back' ? '#fbf9f2' : '#f3f0fa';
+    ctx.fillRect(f.x0 * Z, f.y0 * Z, (f.x1 - f.x0) * Z, (f.y1 - f.y0) * Z);
+    ctx.strokeStyle = '#c2cad3';
+    ctx.strokeRect(f.x0 * Z, f.y0 * Z, (f.x1 - f.x0) * Z, (f.y1 - f.y0) * Z);
     ctx.fillStyle = '#98a1ab'; ctx.font = '11px sans-serif';
-    ctx.fillText(label, x * Z + 5, y * Z + 14);
-  };
-
-  if (view === 'back') {
-    region(0, 0, d.bw, d.bh, '뒷면 (안쪽)', '#fbf9f2');
-  } else {
-    const t1 = d.tw, t2 = d.tw + d.sh, t3 = 2 * d.tw + d.sh, L = bandLen(d);
-    region(0, 0, L, d.td, '', '#f5f0fa');
-    const div = x => { ctx.strokeStyle = '#b39cc9'; ctx.setLineDash([4, 3]); ctx.beginPath(); ctx.moveTo(x * Z, 0); ctx.lineTo(x * Z, d.td * Z); ctx.stroke(); ctx.setLineDash([]); };
-    div(t1); div(t2); div(t3);
-    ctx.fillStyle = '#98a1ab'; ctx.font = '11px sans-serif';
-    ctx.fillText('윗면', 5, 14); ctx.fillText('오른쪽 옆면', t1 * Z + 5, 14);
-    ctx.fillText('아랫면', t2 * Z + 5, 14); ctx.fillText('왼쪽 옆면', t3 * Z + 5, 14);
-    ctx.fillStyle = '#7b8794';
-    ctx.fillText('◀ 양 끝은 조립하면 서로 만나 띠가 됩니다 ▶', (L / 2 - 6) * Z, (d.td + 0.55) * Z);
+    ctx.fillText(f.label, f.x0 * Z + 5, f.y0 * Z + 14);
   }
+  // 접는 선 표시
+  ctx.strokeStyle = '#b8a9d9'; ctx.setLineDash([5, 4]);
+  ctx.beginPath();
+  ctx.moveTo(0, 0); ctx.lineTo(0, d.bh * Z);
+  ctx.moveTo(d.bw * Z, 0); ctx.lineTo(d.bw * Z, d.bh * Z);
+  ctx.moveTo(0.5 * Z, 0); ctx.lineTo((0.5 + d.tw) * Z, 0);
+  ctx.moveTo(0.5 * Z, d.bh * Z); ctx.lineTo((0.5 + d.tw) * Z, d.bh * Z);
+  ctx.stroke(); ctx.setLineDash([]);
 
+  // 1cm 격자 (뒷면)
   ctx.strokeStyle = 'rgba(0,0,0,0.05)';
   ctx.beginPath();
-  for (let x = 1; x < s.w; x++) { ctx.moveTo(x * Z, 0); ctx.lineTo(x * Z, s.h * Z); }
-  for (let y = 1; y < s.h; y++) { ctx.moveTo(0, y * Z); ctx.lineTo(s.w * Z, y * Z); }
+  for (let x = 1; x < d.bw; x++) { ctx.moveTo(x * Z, 0); ctx.lineTo(x * Z, d.bh * Z); }
+  for (let y = 1; y < d.bh; y++) { ctx.moveTo(0, y * Z); ctx.lineTo(d.bw * Z, y * Z); }
   ctx.stroke();
 
   // 테이프
   C.tapes.forEach((t, i) => {
-    if (t.surf !== view) return;
     const comp = R ? R.tapeComp[i] : -1;
     let col = '#9aa0aa';
     if (R && !R.short) {
       const inP = R.energizedPlus.has(comp), inM = R.energizedMinus.has(comp);
-      if (inP && inM) col = `rgba(235,90,60,${0.75 + 0.25 * Math.sin(pulse)})`;
+      if (inP && inM) col = C.tested ? `rgba(235,90,60,${0.75 + 0.25 * Math.sin(pulse)})` : '#c9825f';
       else if (inP) col = '#e8a03c';
       else if (inM) col = '#5b8fd9';
     }
@@ -443,21 +489,20 @@ function draw() {
     ctx.lineWidth = 0.5 * Z; ctx.lineCap = 'round';
     ctx.beginPath();
     drawingTape.forEach((p, j) => j ? ctx.lineTo(p.x * Z, p.y * Z) : ctx.moveTo(p.x * Z, p.y * Z));
-    if (cursor) { const c2 = clampPt({ x: snap(cursor.x), y: snap(cursor.y) }, view); ctx.lineTo(c2.x * Z, c2.y * Z); }
+    if (cursor) { const c2 = clampNet({ x: snap(cursor.x), y: snap(cursor.y) }); ctx.lineTo(c2.x * Z, c2.y * Z); }
     ctx.stroke();
   }
 
-  // 전지 블록 + 전선
   drawBattery(bat, C);
 
   if (litMode) {
     ctx.fillStyle = 'rgba(14,17,28,0.55)';
-    ctx.fillRect(-MARGIN * Z, -MARGIN * Z, W, H);
+    ctx.fillRect(-(MARGIN + d.sw) * Z, -(MARGIN + d.td) * Z, W, H);
+    drawBattery(bat, C); // 스위치는 어두워져도 보이게
   }
 
   // 저항
   C.resistors.forEach((r, i) => {
-    if (r.surf !== view) return;
     const g = legs(r);
     ctx.strokeStyle = '#8d939c'; ctx.lineWidth = 2;
     ctx.beginPath(); ctx.moveTo(g.a.x * Z, g.a.y * Z); ctx.lineTo(g.k.x * Z, g.k.y * Z); ctx.stroke();
@@ -475,7 +520,6 @@ function draw() {
 
   // LED
   C.leds.forEach((l, i) => {
-    if (l.surf !== view) return;
     const g = legs(l);
     const lit = R && R.lit[i] !== undefined ? R.lit[i] : 0;
     const mag = MAGIC[l.color || 'none'];
@@ -503,6 +547,19 @@ function draw() {
     ctx.lineWidth = selected && selected.type === 'led' && selected.i === i ? 2.5 : 1.5;
     ctx.stroke();
   });
+
+  // 선택된 LED·저항 옆에 회전 버튼
+  const selObj = selected && (selected.type === 'led' ? C.leds[selected.i] : selected.type === 'res' ? C.resistors[selected.i] : null);
+  if (selObj) {
+    const bx = (selObj.x + 1.1) * Z, by = (selObj.y - 1.1) * Z;
+    ctx.beginPath(); ctx.arc(bx, by, 11, 0, 7);
+    ctx.fillStyle = '#4a6cf0'; ctx.fill();
+    ctx.fillStyle = '#fff'; ctx.font = 'bold 13px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText('↻', bx, by + 4.5);
+    ctx.textAlign = 'left';
+    cv._rotBtn = { x: selObj.x + 1.1, y: selObj.y - 1.1 };
+  } else cv._rotBtn = null;
+
   ctx.restore();
 }
 
@@ -510,40 +567,42 @@ function drawBattery(bat, C) {
   ctx.fillStyle = '#3b4552'; ctx.strokeStyle = '#20272f'; ctx.lineWidth = 2;
   ctx.beginPath(); ctx.roundRect(bat.x * Z, bat.y * Z, bat.w * Z, bat.h * Z, 5); ctx.fill(); ctx.stroke();
   ctx.fillStyle = '#cfd6de'; ctx.font = '11px sans-serif';
-  ctx.fillText('전지 AA × 2 (3V)', (bat.x + 1.1) * Z, (bat.y + 1.05) * Z);
+  ctx.fillText('전지 AA × 2 (3V)', (bat.x + 1.2) * Z, (bat.y + 1.1) * Z);
+  // 스위치 (전지 오른쪽)
+  const on = C.tested;
+  ctx.beginPath(); ctx.arc(bat.sw.x * Z, bat.sw.y * Z, 0.75 * Z, 0, 7);
+  ctx.fillStyle = on ? '#37c26e' : '#828b96'; ctx.fill();
+  ctx.strokeStyle = '#20272f'; ctx.lineWidth = 2; ctx.stroke();
+  ctx.fillStyle = '#fff'; ctx.font = `bold ${Math.max(10, Z * 0.6)}px sans-serif`; ctx.textAlign = 'center';
+  ctx.fillText(on ? 'ON' : 'OFF', bat.sw.x * Z, bat.sw.y * Z + Z * 0.22);
+  ctx.textAlign = 'left';
+  ctx.fillStyle = '#5a6474'; ctx.font = '11px sans-serif';
+  ctx.fillText('스위치', (bat.sw.x - 0.8) * Z, (bat.y - 0.25) * Z);
+
   const wcol = ['#d64545', '#2f3640'];
   const terms = [bat.tp, bat.tm];
   C.holder.wires.forEach((w, wi) => {
     const t = terms[wi];
     ctx.strokeStyle = wcol[wi]; ctx.lineWidth = 3;
-    if (w.surf === view) {
+    if (!w.dock) {
       ctx.beginPath();
       ctx.moveTo(t.x * Z, t.y * Z);
       ctx.bezierCurveTo(t.x * Z, (w.y + (t.y - w.y) * 0.5) * Z, w.x * Z, (w.y + 1.2) * Z, w.x * Z, w.y * Z);
       ctx.stroke();
-      drawWireEnd(w, wi);
-    } else if (w.surf === 'dock') {
+      ctx.beginPath(); ctx.arc(w.x * Z, w.y * Z, 5, 0, 7);
+      ctx.fillStyle = wcol[wi]; ctx.fill();
+      if (selected && selected.type === 'wire' && selected.wi === wi) { ctx.strokeStyle = '#2b6cb0'; ctx.lineWidth = 2; ctx.stroke(); }
+      ctx.font = 'bold 12px sans-serif'; ctx.fillStyle = wcol[wi];
+      ctx.fillText(wi === 0 ? '+' : '−', w.x * Z + 7, w.y * Z - 6);
+    } else {
       ctx.beginPath(); ctx.moveTo(t.x * Z, t.y * Z); ctx.lineTo(t.x * Z, (t.y - 0.7) * Z); ctx.stroke();
       ctx.beginPath(); ctx.arc(t.x * Z, (t.y - 0.7) * Z, 6, 0, 7);
       ctx.fillStyle = wcol[wi]; ctx.fill();
       if (selected && selected.type === 'wire' && selected.wi === wi) { ctx.strokeStyle = '#2b6cb0'; ctx.lineWidth = 2; ctx.stroke(); }
       ctx.fillStyle = wcol[wi]; ctx.font = 'bold 12px sans-serif';
       ctx.fillText(wi === 0 ? '+' : '−', t.x * Z + 8, (t.y - 0.6) * Z);
-    } else {
-      // 다른 면에 연결됨
-      ctx.beginPath(); ctx.moveTo(t.x * Z, t.y * Z); ctx.lineTo(t.x * Z, (t.y - 0.6) * Z); ctx.stroke();
-      ctx.fillStyle = wcol[wi]; ctx.font = '10px sans-serif';
-      ctx.fillText((wi === 0 ? '+' : '−') + ' ' + (w.surf === 'back' ? '뒷면에 연결됨' : '옆면 띠에 연결됨'), (t.x - 0.5) * Z, (t.y - 0.85) * Z);
     }
   });
-}
-function drawWireEnd(w, wi) {
-  const wcol = ['#d64545', '#2f3640'];
-  ctx.beginPath(); ctx.arc(w.x * Z, w.y * Z, 5, 0, 7);
-  ctx.fillStyle = wcol[wi]; ctx.fill();
-  if (selected && selected.type === 'wire' && selected.wi === wi) { ctx.strokeStyle = '#2b6cb0'; ctx.lineWidth = 2; ctx.stroke(); }
-  ctx.font = 'bold 12px sans-serif'; ctx.fillStyle = wcol[wi];
-  ctx.fillText(wi === 0 ? '+' : '−', w.x * Z + 7, w.y * Z - 6);
 }
 
 // ---------- 결과 패널 ----------
@@ -551,13 +610,9 @@ function updatePanel() {
   const C = work.circuit, R = solveResult;
   const el = $('circuit-info');
   let html = '';
-  const tapeUsed = C.tapes.reduce((a, t) => a + tapeLen(t), 0);
-  if (config.showSupply) {
-    const overL = C.leds.length > config.ledCount, overT = tapeUsed > 90;
-    html += `<p class="supply">지급 재료 — LED ${config.ledCount}개 / 사용 ${C.leds.length}개 ${overL ? '<b class="warn">초과</b>' : ''}<br>` +
-      `테이프 90cm / 사용 ${Math.round(tapeUsed)}cm ${overT ? '<b class="warn">초과</b>' : ''}</p>`;
-  }
   if (!R) { el.innerHTML = html; return; }
+  if (C.leds.length > config.ledCount)
+    html += `<p class="hint">실제로 지급되는 LED는 ${config.ledCount}개예요. 배치를 참고로 실험하는 건 자유!</p>`;
   if (R.wiresOff === 2) html += '<p class="muted">전지의 빨간 선(+)과 검은 선(−) 끝을 끌어다 테이프나 LED 다리에 붙여 보세요.</p>';
   else if (R.wiresOff === 1) html += '<p class="muted">전선 한 가닥이 아직 전지에 꽂혀만 있어요. 마저 연결해 볼까요?</p>';
   else if (R.short) html += '<p class="warn">전지가 뜨거워집니다! (+)와 (−)가 어딘가에서 직접 만나고 있습니다.</p>';
@@ -579,7 +634,7 @@ function updatePanel() {
     }
     if (R.noResistorLit)
       html += `<p class="hint">지금 회로에는 저항이 없어서 LED에 전류가 그대로 흐릅니다. 실제 제작에서는 LED가 뜨거워져 수명이 빨리 닳거나 망가질 수 있어요. 저항을 함께 쓰면 전류를 알맞게 제한해 LED를 오래 쓸 수 있습니다.</p>`;
-  } else html += '<p class="muted">배치를 마쳤으면 켜질 LED 개수를 예측하고 [스위치 눌러 점등]을 눌러 보세요.</p>';
+  } else html += '<p class="muted">스위치가 꺼져 있어요. 몇 개가 켜질지 예측을 적고 스위치를 켜 보세요.</p>';
   el.innerHTML = html;
 }
 
@@ -587,19 +642,17 @@ function updatePanel() {
 export function getLighting() {
   const d = dims(), C = work.circuit;
   const R = solve();
+  const litSet = C.tested ? R.lit : {};
   const out = { lit: [], tested: C.tested, dims: d };
-  const t1 = d.tw, t2 = d.tw + d.sh, t3 = 2 * d.tw + d.sh, L = bandLen(d);
-  for (const [iStr, b] of Object.entries(R.lit)) {
+  for (const [iStr, b] of Object.entries(litSet)) {
     const l = C.leds[+iStr];
     const mag = MAGIC[l.color || 'none'];
+    const k = faceOf(l) || 'back';
     let face = 'back', fx = l.x, fy = l.y;
-    if (l.surf === 'band') {
-      const x = ((l.x % L) + L) % L;
-      if (x < t1) { face = 'top'; fx = 0.5 + x; fy = 0; }
-      else if (x < t2) { face = 'right'; fx = d.bw; fy = x - t1; }
-      else if (x < t3) { face = 'bottom'; fx = 0.5 + (t3 - x); fy = d.bh; }
-      else { face = 'left'; fx = 0; fy = L - x; }
-    }
+    if (k === 'top') { face = 'top'; fy = 0; }
+    else if (k === 'bottom') { face = 'bottom'; fy = d.bh; }
+    else if (k === 'left') { face = 'left'; fx = 0; }
+    else if (k === 'right') { face = 'right'; fx = d.bw; }
     out.lit.push({ face, fx, fy, b, rgb: mag.rgb });
   }
   return out;
@@ -609,21 +662,62 @@ export function getLighting() {
 function hitTest(p) {
   const C = work.circuit;
   const bat = battery();
+  // 회전 버튼
+  if (cv._rotBtn && Math.hypot(p.x - cv._rotBtn.x, p.y - cv._rotBtn.y) < 0.85) return { type: 'rotate' };
+  // 스위치
+  if (Math.hypot(p.x - bat.sw.x, p.y - bat.sw.y) < 1.0) return { type: 'switch' };
   for (let wi = 0; wi < 2; wi++) {
     const w = C.holder.wires[wi];
-    if (w.surf === view && Math.hypot(p.x - w.x, p.y - w.y) < 0.7) return { type: 'wire', wi };
-    if (w.surf !== view) { // 도킹 상태 또는 다른 면 → 단자 근처에서 잡아온다
+    if (!w.dock && Math.hypot(p.x - w.x, p.y - w.y) < 0.7) return { type: 'wire', wi };
+    if (w.dock) {
       const t = wi === 0 ? bat.tp : bat.tm;
       if (Math.hypot(p.x - t.x, p.y - (t.y - 0.7)) < 0.8) return { type: 'wire', wi };
     }
   }
   for (let i = C.leds.length - 1; i >= 0; i--)
-    if (C.leds[i].surf === view && Math.hypot(p.x - C.leds[i].x, p.y - C.leds[i].y) < 0.8) return { type: 'led', i };
+    if (Math.hypot(p.x - C.leds[i].x, p.y - C.leds[i].y) < 0.8) return { type: 'led', i };
   for (let i = (C.resistors || []).length - 1; i >= 0; i--)
-    if (C.resistors[i].surf === view && Math.hypot(p.x - C.resistors[i].x, p.y - C.resistors[i].y) < 0.8) return { type: 'res', i };
+    if (Math.hypot(p.x - C.resistors[i].x, p.y - C.resistors[i].y) < 0.8) return { type: 'res', i };
   for (let i = C.tapes.length - 1; i >= 0; i--)
-    if (C.tapes[i].surf === view && distTape(p, C.tapes[i]) < 0.5) return { type: 'tape', i };
+    if (distTape2D(p, C.tapes[i]) < 0.5) return { type: 'tape', i };
   return null;
+}
+
+function rotateSelected() {
+  const C = work.circuit;
+  const o = selected && (selected.type === 'led' ? C.leds[selected.i] : selected.type === 'res' ? C.resistors[selected.i] : null);
+  if (o && !readOnly) { o.dir = (o.dir + 1) % 4; Object.assign(o, clampPart(o, o.dir)); C.tested = false; afterChange(); }
+}
+
+function toggleSwitch() {
+  const C = work.circuit;
+  if (readOnly) return;
+  if (!C.tested) {
+    if (config.askPredict && C.predictCount === '') {
+      $('circuit-predict-hint').textContent = '몇 개가 켜질지 먼저 예측해 보세요.';
+      return;
+    }
+    C.tested = true;
+    const R = solve();
+    const litN = Object.keys(R.lit).length;
+    addLog(`회로 — LED ${C.leds.length}개 배치 → ${litN}개 점등` + (R.short ? ' (합선!)' : ''));
+    sheetLog('회로 점등', `LED ${C.leds.length}개 중 ${litN}개 켜짐` +
+      (R.short ? ', 합선' : '') + (R.dimSeries ? ', 직렬로 어두움' : '') + (R.hasBlockedSeries ? ', 직렬 과다로 소등' : '') +
+      (config.askPredict ? `, 예측 ${C.predictCount}개` : ''));
+    renderLogList();
+  } else {
+    C.tested = false;
+  }
+  touch();
+  updateSwitchButton();
+  resolveAndDraw();
+}
+function updateSwitchButton() {
+  $('btn-test').textContent = work.circuit.tested ? '스위치 끄기' : '스위치 켜기';
+  $('btn-test').classList.toggle('on', work.circuit.tested);
+  const ok = !config.askPredict || work.circuit.predictCount !== '';
+  $('btn-test').disabled = readOnly || (!work.circuit.tested && !ok);
+  $('circuit-predict-hint').textContent = ok ? '' : '몇 개가 켜질지 먼저 예측해 보세요.';
 }
 
 function resolveAndDraw() {
@@ -633,21 +727,15 @@ function resolveAndDraw() {
   draw();
 }
 function managePulse() {
-  const need = !view3d && solveResult && (solveResult.short ||
+  const need = !view3d && solveResult && work.circuit.tested && (solveResult.short ||
     (solveResult.energizedPlus.size && solveResult.energizedMinus.size));
   if (need && !pulseTimer) pulseTimer = setInterval(() => { pulse += 0.35; draw(); }, 90);
   if (!need && pulseTimer) { clearInterval(pulseTimer); pulseTimer = null; }
 }
-function setView(v) {
-  view = v; drawingTape = null; selected = null;
-  document.querySelectorAll('#surf-sel button').forEach(b => b.classList.toggle('active', b.dataset.v === v));
-  updateSelPanel();
-  resolveAndDraw();
-}
 function set3D(on) {
   view3d = on;
   $('btn-3d').classList.toggle('active', on);
-  $('btn-3d').textContent = on ? '평면 편집으로 돌아가기' : '입체로 보기';
+  $('btn-3d').textContent = on ? '평면(전개도)으로 돌아가기' : '입체로 보기';
   drawingTape = null; selected = null;
   updateSelPanel();
   resolveAndDraw();
@@ -658,10 +746,7 @@ export function initCircuit() {
   ctx = cv.getContext('2d');
   cv.addEventListener('contextmenu', e => e.preventDefault());
 
-  document.querySelectorAll('#surf-sel button').forEach(b =>
-    b.addEventListener('click', () => { if (view3d) set3D(false); setView(b.dataset.v); }));
   $('btn-3d').addEventListener('click', () => set3D(!view3d));
-
   $('zoom-in').addEventListener('click', () => { if (!view3d) { Z = Math.min(30, Z + 3); draw(); } });
   $('zoom-out').addEventListener('click', () => { if (!view3d) { Z = Math.max(8, Z - 3); draw(); } });
   cv.addEventListener('wheel', e => {
@@ -673,7 +758,7 @@ export function initCircuit() {
 
   const TOOL_FACTS = {
     select: '',
-    tape: '전도성 테이프 — 은이 섞인 천이라 전기가 통해요. 겹치면 이어지고, 끊어지면 전류도 멈춰요.',
+    tape: '전도성 테이프 — 은이 섞인 천이라 전기가 통해요. 겹치면 이어지고, 끊어지면 전류도 멈춰요. 접는 선을 넘어 이어 붙여도 돼요.',
     led: 'LED — 긴 다리가 (+)극. 실제로는 다리를 "ㄴ"자로 눕혀야 테이프에 잘 붙어요.',
     res: '저항 — 전류를 알맞게 줄여 LED가 뜨거워지지 않게 지켜 줘요.',
     erase: '',
@@ -696,21 +781,26 @@ export function initCircuit() {
     const p = toCm(e);
     const C = work.circuit;
     normalize(C);
+    // 스위치·회전 버튼은 어떤 도구에서든 동작
+    const pre = hitTest(p);
+    if (pre && pre.type === 'switch') { toggleSwitch(); return; }
+    if (pre && pre.type === 'rotate' && tool === 'select') { rotateSelected(); return; }
+
     if (tool === 'tape') {
       if (!drawingTape) drawingTape = [];
-      drawingTape.push(clampPt({ x: snap(p.x), y: snap(p.y) }, view));
+      drawingTape.push(clampNet({ x: snap(p.x), y: snap(p.y) }));
       draw();
       return;
     }
     if (tool === 'led') {
       if (C.leds.length >= config.ledCount && config.overLimit === 'block') return;
-      C.leds.push({ ...clampPart({ x: snap(p.x), y: snap(p.y) }, 0, view), dir: 0, color: 'none', surf: view });
+      C.leds.push({ ...clampPart({ x: snap(p.x), y: snap(p.y) }, 0), dir: 0, color: 'none' });
       selected = { type: 'led', i: C.leds.length - 1 };
       C.tested = false; afterChange();
       return;
     }
     if (tool === 'res') {
-      C.resistors.push({ ...clampPart({ x: snap(p.x), y: snap(p.y) }, 0, view), dir: 0, surf: view });
+      C.resistors.push({ ...clampPart({ x: snap(p.x), y: snap(p.y) }, 0), dir: 0 });
       selected = { type: 'res', i: C.resistors.length - 1 };
       C.tested = false; afterChange();
       return;
@@ -721,20 +811,20 @@ export function initCircuit() {
         if (hit.type === 'led') C.leds.splice(hit.i, 1);
         else if (hit.type === 'res') C.resistors.splice(hit.i, 1);
         else if (hit.type === 'tape') C.tapes.splice(hit.i, 1);
-        else if (hit.type === 'wire') C.holder.wires[hit.wi] = { surf: 'dock' };
+        else if (hit.type === 'wire') C.holder.wires[hit.wi] = { dock: true };
         C.tested = false; afterChange();
       }
       return;
     }
-    const hit = hitTest(p);
-    selected = hit;
+    const hit = pre;
+    selected = hit && ['led', 'res', 'tape', 'wire'].includes(hit.type) ? hit : null;
     updateSelPanel();
-    if (hit) {
+    if (selected) {
       cv.setPointerCapture(e.pointerId);
-      if (hit.type === 'led') dragOff = { x: p.x - C.leds[hit.i].x, y: p.y - C.leds[hit.i].y };
-      else if (hit.type === 'res') dragOff = { x: p.x - C.resistors[hit.i].x, y: p.y - C.resistors[hit.i].y };
-      else if (hit.type === 'wire') dragOff = { x: 0, y: 0 };
-      else if (hit.type === 'tape') dragOff = { x: p.x, y: p.y, pts: C.tapes[hit.i].pts.map(q => ({ ...q })) };
+      if (selected.type === 'led') dragOff = { x: p.x - C.leds[selected.i].x, y: p.y - C.leds[selected.i].y };
+      else if (selected.type === 'res') dragOff = { x: p.x - C.resistors[selected.i].x, y: p.y - C.resistors[selected.i].y };
+      else if (selected.type === 'wire') dragOff = { x: 0, y: 0 };
+      else if (selected.type === 'tape') dragOff = { x: p.x, y: p.y, pts: C.tapes[selected.i].pts.map(q => ({ ...q })) };
     }
     draw();
   });
@@ -748,19 +838,19 @@ export function initCircuit() {
     const C = work.circuit;
     if (selected.type === 'led') {
       const l = C.leds[selected.i];
-      Object.assign(l, clampPart({ x: snap(p.x - dragOff.x), y: snap(p.y - dragOff.y) }, l.dir, view));
+      Object.assign(l, clampPart({ x: snap(p.x - dragOff.x), y: snap(p.y - dragOff.y) }, l.dir));
     } else if (selected.type === 'res') {
       const r = C.resistors[selected.i];
-      Object.assign(r, clampPart({ x: snap(p.x - dragOff.x), y: snap(p.y - dragOff.y) }, r.dir, view));
+      Object.assign(r, clampPart({ x: snap(p.x - dragOff.x), y: snap(p.y - dragOff.y) }, r.dir));
     } else if (selected.type === 'wire') {
-      const s = surfSize(view);
-      if (p.y <= s.h + 0.4) // 면 위 → 이 면에 연결
-        C.holder.wires[selected.wi] = { ...clampPt({ x: snap(p.x), y: snap(p.y) }, view), surf: view };
-      else // 면 아래로 끌면 전지로 되돌아감
-        C.holder.wires[selected.wi] = { surf: 'dock' };
+      const d = dims();
+      if (p.y <= d.bh + d.td + 0.4)
+        C.holder.wires[selected.wi] = { ...clampNet({ x: snap(p.x), y: snap(p.y) }) };
+      else
+        C.holder.wires[selected.wi] = { dock: true };
     } else if (selected.type === 'tape') {
       const dx = snap(p.x - dragOff.x), dy = snap(p.y - dragOff.y);
-      C.tapes[selected.i].pts = dragOff.pts.map(q => clampPt({ x: q.x + dx, y: q.y + dy }, view));
+      C.tapes[selected.i].pts = dragOff.pts.map(q => clampNet({ x: q.x + dx, y: q.y + dy }));
     }
     C.tested = false;
     draw();
@@ -780,14 +870,10 @@ export function initCircuit() {
       if (selected.type === 'led') C.leds.splice(selected.i, 1);
       else if (selected.type === 'res') C.resistors.splice(selected.i, 1);
       else if (selected.type === 'tape') C.tapes.splice(selected.i, 1);
-      else if (selected.type === 'wire') C.holder.wires[selected.wi] = { surf: 'dock' };
+      else if (selected.type === 'wire') C.holder.wires[selected.wi] = { dock: true };
       selected = null; C.tested = false; afterChange();
     }
-    if (e.key.toLowerCase() === 'r' && selected && !readOnly) {
-      const C = work.circuit;
-      const o = selected.type === 'led' ? C.leds[selected.i] : selected.type === 'res' ? C.resistors[selected.i] : null;
-      if (o) { o.dir = (o.dir + 1) % 4; Object.assign(o, clampPart(o, o.dir, o.surf)); C.tested = false; afterChange(); }
-    }
+    if (e.key.toLowerCase() === 'r') rotateSelected();
   });
   $('btn-tape-done').addEventListener('click', finishTape);
 
@@ -799,25 +885,13 @@ export function initCircuit() {
       }
     });
   });
-  $('btn-led-rot').addEventListener('click', () => {
-    const C = work.circuit;
-    const o = selected && (selected.type === 'led' ? C.leds[selected.i] : selected.type === 'res' ? C.resistors[selected.i] : null);
-    if (o && !readOnly) { o.dir = (o.dir + 1) % 4; Object.assign(o, clampPart(o, o.dir, o.surf)); C.tested = false; afterChange(); }
-  });
+  $('btn-led-rot').addEventListener('click', rotateSelected);
 
   $('in-predict-led').addEventListener('input', () => {
     work.circuit.predictCount = $('in-predict-led').value;
-    touch(); updateTestButton();
+    touch(); updateSwitchButton();
   });
-  $('btn-test').addEventListener('click', () => {
-    work.circuit.tested = true;
-    const R = solve();
-    const litN = Object.keys(R.lit).length;
-    addLog(`회로 — LED ${work.circuit.leds.length}개 배치 → ${litN}개 점등` + (R.short ? ' (합선!)' : ''));
-    renderLogList();
-    touch();
-    resolveAndDraw();
-  });
+  $('btn-test').addEventListener('click', toggleSwitch);
 
   document.addEventListener('work-loaded', refreshCircuit);
   refreshCircuit();
@@ -825,7 +899,7 @@ export function initCircuit() {
 
 function finishTape() {
   if (drawingTape && drawingTape.length >= 2) {
-    work.circuit.tapes.push({ pts: drawingTape, surf: view });
+    work.circuit.tapes.push({ pts: drawingTape });
     work.circuit.tested = false;
     drawingTape = null;
     afterChange();
@@ -834,14 +908,9 @@ function finishTape() {
 
 function afterChange() {
   touch();
-  updateTestButton();
+  updateSwitchButton();
   updateSelPanel();
   resolveAndDraw();
-}
-function updateTestButton() {
-  const ok = !config.askPredict || work.circuit.predictCount !== '';
-  $('btn-test').disabled = readOnly || !ok;
-  $('circuit-predict-hint').textContent = ok ? '' : '몇 개가 켜질지 먼저 예측해 보세요.';
 }
 function updateSelPanel() {
   const led = selected && selected.type === 'led';
@@ -859,6 +928,6 @@ export function refreshCircuit() {
   $('in-predict-led').value = work.circuit.predictCount ?? '';
   $('circuit-predict-row').style.display = config.askPredict ? '' : 'none';
   $('tool-res').style.display = config.allowResistor ? '' : 'none';
-  updateTestButton();
+  updateSwitchButton();
   resolveAndDraw();
 }

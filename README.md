@@ -57,6 +57,31 @@ Vercel을 쓰려면: vercel.com에서 GitHub 저장소 연결만 하면 끝 (Fra
 비밀번호는 두지 않았습니다. 학번 선택 + (선택) 반 코드면 수업용으로 충분하고,
 비밀번호 분실 처리가 수업 시간을 더 잡아먹습니다.
 
+## 학생 활동·피드백을 구글 시트에 기록 (선택)
+
+학생이 무엇을 시도했고 어떤 피드백을 받았는지가 시트에 한 줄씩 쌓입니다
+(접속, 설계 일지, 점등 결과, 도안 피드백, 도움말 검색 중 답을 못 찾은 검색어).
+다음 수업 개선과 평가 계획 자료로 쓰는 교사용 데이터입니다.
+
+1. 구글 시트 새로 만들기 → 확장 프로그램 → Apps Script
+2. 아래 코드를 붙여넣고 저장:
+
+```
+function doPost(e) {
+  var rows = JSON.parse(e.postData.contents);
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sh = ss.getSheetByName('기록') || ss.insertSheet('기록');
+  if (sh.getLastRow() === 0) sh.appendRow(['시각', '학번', '이벤트', '내용']);
+  rows.forEach(function (r) { sh.appendRow([new Date(r.ts), r.id, r.event, r.detail]); });
+  return ContentService.createTextOutput('ok');
+}
+```
+
+3. 배포 → 새 배포 → 유형: 웹 앱 → 액세스 권한: **모든 사용자** → 배포
+4. 나온 웹 앱 URL(`https://script.google.com/macros/s/…/exec`)을
+   앱의 관리자 모드 → 수업 설정 → **Google Sheet 기록 URL**에 붙여넣고 저장
+5. 설정 코드로 크롬북들에 배포하면 모든 학생 기록이 한 시트에 모입니다
+
 ## 공개수업 전 점검 목록
 
 - [ ] 학교망 크롬북에서 배포 주소 열리는지
