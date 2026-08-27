@@ -70,12 +70,22 @@ Vercel을 쓰려면: vercel.com에서 GitHub 저장소 연결만 하면 끝 (Fra
 function doPost(e) {
   var rows = JSON.parse(e.postData.contents);
   var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var sh = ss.getSheetByName('기록') || ss.insertSheet('기록');
-  if (sh.getLastRow() === 0) sh.appendRow(['시각', '학번', '이벤트', '내용']);
-  rows.forEach(function (r) { sh.appendRow([new Date(r.ts), r.id, r.event, r.detail]); });
+  rows.forEach(function (r) {
+    // 반별 탭에 나눠서 기록 (1반, 2반, …). 탭 안에서는 번호로 정렬해 보면 학생별로 보인다.
+    var name = (r.ban || r.ban === 0) ? r.ban + '반' : '기타';
+    var sh = ss.getSheetByName(name) || ss.insertSheet(name);
+    if (sh.getLastRow() === 0) sh.appendRow(['시각', '번호', '학번', '이벤트', '내용']);
+    sh.appendRow([new Date(r.ts), r.num || '', r.id, r.event, r.detail]);
+  });
   return ContentService.createTextOutput('ok');
 }
 ```
+
+기록되는 이벤트: 접속 · 설계 일지(케이스 조립 시도와 결과) · 회로 점등(예측 포함) ·
+도안 피드백 · 도움말 검색 중 답을 못 찾은 검색어 · 교사 메모.
+290명(10개 반) 규모도 문제없습니다 — 반 탭 10개에 나눠 쌓이고,
+각 탭에서 번호 열로 정렬·필터하면 학생별 기록이 됩니다.
+관리자 모드의 [시트 기록 테스트] 버튼으로 연결을 확인할 수 있습니다.
 
 3. 배포 → 새 배포 → 유형: 웹 앱 → 액세스 권한: **모든 사용자** → 배포
 4. 나온 웹 앱 URL(`https://script.google.com/macros/s/…/exec`)을

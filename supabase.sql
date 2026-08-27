@@ -17,3 +17,4 @@ alter table lps_works enable row level security;
 create policy "lps_read" on lps_works for select using (true);
 create policy "lps_insert" on lps_works for insert with check (true);
 create policy "lps_update" on lps_works for update using (true);
+create policy "lps_delete" on lps_works for delete using (true); -- 관리자 화면의 학생 작업 초기화용

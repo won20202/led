@@ -1,6 +1,7 @@
 // 관리자 모드: 로그인 화면의 [관리자] 버튼 또는 URL ?admin=1 → PIN 입력.
 import { config, saveConfig, exportConfigCode, importConfigCode, getMisses, clearMisses,
-         cloudList, cloudGet, setReadOnlyWork, DEFAULT_CONFIG, DEFAULT_RUBRIC } from './state.js';
+         cloudList, cloudGet, cloudDelete, setReadOnlyWork, DEFAULT_CONFIG, DEFAULT_RUBRIC,
+         sheetLogFor, sheetFlushNow } from './state.js';
 
 const $ = id => document.getElementById(id);
 
@@ -166,6 +167,7 @@ function localWorks() {
   return out.sort((a, b) => a.ban - b.ban || a.num - b.num);
 }
 
+let cloudRows = [];
 async function renderWorks() {
   const el = $('adm-works');
   if (!el) return;
@@ -173,7 +175,9 @@ async function renderWorks() {
   const loc = localWorks();
   html += loc.length
     ? loc.map(r => `<div class="adm-work-row">${r.ban}반 ${r.num}번 <span class="muted">${r.updated ? new Date(r.updated).toLocaleString('ko-KR') : ''}</span>
-        <button class="w-open" data-id="local:${r.ban}-${r.num}">보기</button></div>`).join('')
+        <button class="w-open" data-id="local:${r.ban}-${r.num}">보기</button>
+        <button class="w-note" data-bn="${r.ban}:${r.num}">메모</button>
+        <button class="w-del" data-id="local:${r.ban}-${r.num}">삭제</button></div>`).join('')
     : '<p class="muted">없음</p>';
   html += '<h4>서버(Supabase)에 모인 작업</h4>';
   if (!config.supabaseUrl) {
@@ -181,11 +185,19 @@ async function renderWorks() {
     el.innerHTML = html; bindWorkButtons(); return;
   }
   try {
-    const rows = await cloudList();
-    html += rows.length
-      ? `<table class="adm-table"><tr><th>학번</th><th>마지막 저장</th><th></th></tr>` +
-        rows.map(r => `<tr><td>${r.ban}반 ${r.num}번</td><td>${new Date(r.updated_at).toLocaleString('ko-KR')}</td>
-          <td><button class="w-open" data-id="cloud:${r.id}">보기</button></td></tr>`).join('') + '</table>'
+    cloudRows = await cloudList();
+    // 반별로 묶어서 보여준다 (10개 반 × 30명 규모)
+    const byBan = {};
+    cloudRows.forEach(r => { (byBan[r.ban] = byBan[r.ban] || []).push(r); });
+    html += cloudRows.length
+      ? Object.keys(byBan).sort((a, b) => a - b).map(ban =>
+          `<details class="adm-ban"><summary>${ban}반 (${byBan[ban].length}명)</summary>
+           <table class="adm-table"><tr><th>학번</th><th>마지막 저장</th><th style="width:150px"></th></tr>` +
+          byBan[ban].map(r => `<tr><td>${r.ban}반 ${r.num}번</td><td>${new Date(r.updated_at).toLocaleString('ko-KR')}</td>
+            <td><button class="w-open" data-id="cloud:${r.id}">보기</button>
+                <button class="w-note" data-bn="${r.ban}:${r.num}">메모</button>
+                <button class="w-del" data-id="cloud:${r.id}">삭제</button></td></tr>`).join('') +
+          '</table></details>').join('')
       : '<p class="muted">아직 저장된 학생 작업이 없습니다.</p>';
   } catch (e) {
     html += `<p class="warn">서버에서 불러오지 못했습니다: ${esc(e.message)}</p>`;
@@ -208,6 +220,47 @@ function bindWorkButtons() {
     if (!w) { alert('데이터가 없습니다.'); return; }
     openReadOnly(w, id, kind === 'cloud' ? id : null);
   }));
+  // 교사 메모 → 구글 시트에 기록
+  $('adm-works').querySelectorAll('.w-note').forEach(b => b.addEventListener('click', () => {
+    if (!config.sheetUrl) { alert('먼저 수업 설정에 Google Sheet 기록 URL을 넣어 주세요.'); return; }
+    const [ban, num] = b.dataset.bn.split(':').map(Number);
+    const text = prompt(`${ban}반 ${num}번 학생에 대한 메모 (시트에 기록됩니다)`);
+    if (text && text.trim()) {
+      sheetLogFor(ban, num, '교사 메모', text.trim());
+      sheetFlushNow();
+      alert('기록했습니다.');
+    }
+  }));
+  // 학생 작업 초기화 (잘못 로그인한 학번 정리, 재작업 등)
+  $('adm-works').querySelectorAll('.w-del').forEach(b => b.addEventListener('click', async () => {
+    const kind = b.dataset.id.split(':')[0];
+    const id = b.dataset.id.split(':').slice(1).join(':');
+    if (!confirm(`${id} 작업을 삭제(초기화)할까요? 되돌릴 수 없습니다.`)) return;
+    if (kind === 'local') localStorage.removeItem('lps_work_' + id);
+    else {
+      try { await cloudDelete(id); } catch (e) { alert('삭제 실패: ' + e.message); return; }
+    }
+    renderWorks();
+  }));
+}
+
+// 학생 목록 CSV (엑셀용 BOM 포함)
+async function exportCsv() {
+  const rows = [['저장 위치', '반', '번호', '학번', '마지막 저장']];
+  localWorks().forEach(r => rows.push(['이 기기', r.ban, r.num, `2-${r.ban}-${r.num}`,
+    r.updated ? new Date(r.updated).toLocaleString('ko-KR') : '']));
+  if (config.supabaseUrl) {
+    try {
+      (await cloudList()).forEach(r => rows.push(['서버', r.ban, r.num, r.id,
+        new Date(r.updated_at).toLocaleString('ko-KR')]));
+    } catch (e) { /* 서버 실패해도 로컬만 내보냄 */ }
+  }
+  const csv = '﻿' + rows.map(r => r.join(',')).join('\r\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+  a.download = '학생작업목록.csv';
+  a.click();
+  URL.revokeObjectURL(a.href);
 }
 
 let liveTimer = null, worksTimer = null;
@@ -293,6 +346,25 @@ export function initAdmin() {
     clearInterval(worksTimer);
   });
   $('adm-works-reload').addEventListener('click', renderWorks);
+  $('adm-csv').addEventListener('click', exportCsv);
+  $('adm-sheet-test').addEventListener('click', () => {
+    collectSettings();
+    if (!config.sheetUrl) { alert('수업 설정에 Google Sheet 기록 URL을 먼저 넣고 [설정 저장]을 눌러 주세요.'); return; }
+    sheetLogFor(0, 0, '테스트', '관리자 모드에서 보낸 테스트 기록입니다');
+    sheetFlushNow();
+    alert('테스트 기록을 보냈습니다. 잠시 후 구글 시트에 "0반" 탭이 생겼는지 확인하세요.');
+  });
+  $('adm-wipe-local').addEventListener('click', () => {
+    const keys = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith('lps_work_')) keys.push(k);
+    }
+    if (!keys.length) { alert('이 기기에 저장된 학생 작업이 없습니다.'); return; }
+    if (!confirm(`이 기기에 저장된 학생 작업 ${keys.length}건을 모두 지울까요?\n(서버에 저장된 작업은 지워지지 않습니다. 학기 말·기기 정리용)`)) return;
+    keys.forEach(k => localStorage.removeItem(k));
+    renderWorks();
+  });
 
   const params = new URLSearchParams(location.search);
   if (params.get('admin') === '1') openAdmin();

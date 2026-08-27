@@ -182,14 +182,21 @@ export function addLog(line) {
 // Apps Script 웹 앱으로 12초 간격 묶음 전송. 실패해도 조용히 무시.
 let sheetQueue = [], flushTimer = null;
 export function sheetLog(event, detail) {
-  if (!config.sheetUrl || readOnly || !student) return;
+  if (readOnly || !student) return;
+  sheetLogFor(student.ban, student.num, event, detail);
+}
+// 관리자(교사 메모 등)용: 로그인 여부와 무관하게 기록
+export function sheetLogFor(ban, num, event, detail) {
+  if (!config.sheetUrl) return;
   sheetQueue.push({
     ts: new Date().toISOString(),
-    id: `2-${student.ban}-${student.num}`,
+    ban, num,
+    id: `2-${ban}-${num}`,
     event, detail: String(detail || '').slice(0, 500),
   });
   if (!flushTimer) flushTimer = setTimeout(flushSheet, 12000);
 }
+export function sheetFlushNow() { clearTimeout(flushTimer); flushSheet(); }
 function flushSheet() {
   flushTimer = null;
   if (!sheetQueue.length || !config.sheetUrl) return;
@@ -285,6 +292,12 @@ export async function cloudGet(id) {
   if (!res.ok) throw new Error('불러오기 실패 ' + res.status);
   const rows = await res.json();
   return rows[0] ? rows[0].payload : null;
+}
+export async function cloudDelete(id) {
+  const c = sb();
+  if (!c) return;
+  const res = await fetch(`${c.url}?id=eq.${encodeURIComponent(id)}`, { method: 'DELETE', headers: c.headers });
+  if (!res.ok) throw new Error('삭제 실패 ' + res.status);
 }
 
 // 페이지를 떠날 때 마지막 저장
