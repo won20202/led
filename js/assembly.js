@@ -1,6 +1,7 @@
-// 조립 순서 탭: 작업 카드를 배열하고 실행하면 그림 시뮬레이션으로 진행된다.
-// 건전지 홀더를 "어디에 붙일지"는 여기서 학생이 정한다. 순서가 틀리면 그 결과가 나온다. 정답은 알려주지 않는다.
-import { config, work, addLog, touch, readOnly } from './state.js';
+// 조립 순서 탭: 카드를 배열하고, 배열한 카드를 "눌러서" 그 단계의 모습을 본다.
+// 순서가 잘못되면 그 단계에서 무슨 일이 생기는지 보여주고, 그 뒤 단계는 볼 수 없다.
+// 건전지 홀더를 어디에 붙일지도 여기서 정한다. 정답 순서는 알려주지 않는다.
+import { config, work, addLog, touch, readOnly, sheetLog } from './state.js';
 import { renderLogList } from './case3d.js';
 import { drawAssembled, getLighting } from './circuit.js';
 import { drawLitFront } from './preview.js';
@@ -21,7 +22,6 @@ const CARDS = [
 ];
 const SHUFFLED = ['front', 'battery', 'cut', 'backclose', 'lightcheck', 'glue5', 'dryfit', 'finalcheck', 'wire'];
 
-// 실습에서 실제로 사고가 나는 지점들 — 단계마다 짧은 이론·안전 팁을 보여준다
 const TIPS = {
   cut: '우드락은 스티로폼을 눌러 만든 판이라 가볍고 부드러워 커터칼로 쉽게 잘려요. 자를 대고 한 번에 깊게 긋지 말고 2~3번 나눠 그으면 단면이 깔끔합니다. 칼날은 몸 바깥쪽으로, 꼭 커팅 매트 위에서!',
   dryfit: '풀로 붙이기 전에 맞춰만 보는 단계예요. 지금 치수가 틀린 걸 발견하면 우드락을 다시 자를 기회가 있어요.',
@@ -41,6 +41,7 @@ function dims() {
   return { bw: n(p.back.w) || 25, bh: n(p.back.h) || 10, sw: n(p.side.w) || 4.5, sh: n(p.side.h) || 10, tw: n(p.topbot.w) || 24, td: n(p.topbot.h) || 4.5 };
 }
 
+// 순서 검증: 처음으로 문제가 생기는 단계와 이유
 function runSequence(seq) {
   const done = new Set();
   const notes = [];
@@ -48,27 +49,27 @@ function runSequence(seq) {
     const id = seq[i];
     switch (id) {
       case 'dryfit':
-        if (!done.has('cut')) return { step: i, msg: '자르지 않은 우드락 판으로는 가조립을 해 볼 수 없습니다.' };
+        if (!done.has('cut')) return { step: i, msg: '자르지 않은 우드락 판으로는 가조립을 해 볼 수 없습니다.', notes };
         break;
       case 'glue5':
-        if (!done.has('cut')) return { step: i, msg: '아직 판을 재단하지 않아 붙일 조각이 없습니다.' };
-        if (!done.has('front')) return { step: i, msg: '케이스를 세워 붙이고 나니, 평평하게 놓고 해야 할 앞면 칼질을 할 수가 없습니다.' };
-        if (!done.has('wire')) return { step: i, msg: '케이스가 조립되어 버려 안쪽 면에 테이프를 반듯하게 붙일 공간이 없습니다.' };
+        if (!done.has('cut')) return { step: i, msg: '아직 판을 재단하지 않아 붙일 조각이 없습니다.', notes };
+        if (!done.has('front')) return { step: i, msg: '케이스를 세워 붙이고 나니, 평평하게 놓고 해야 할 앞면 칼질을 할 수가 없습니다.', notes };
+        if (!done.has('wire')) return { step: i, msg: '케이스가 조립되어 버려 안쪽 면에 테이프를 반듯하게 붙일 공간이 없습니다.', notes };
         if (!done.has('dryfit')) notes.push('가조립을 건너뛰었네요. 치수가 틀렸다면 풀로 붙인 뒤에야 알게 됩니다.');
         break;
       case 'lightcheck':
-        if (!done.has('wire')) return { step: i, msg: '회로가 아직 없는데 무엇을 점등해 볼까요?' };
+        if (!done.has('wire')) return { step: i, msg: '회로가 아직 없는데 무엇을 점등해 볼까요?', notes };
         break;
       case 'battery':
-        if (!done.has('wire')) return { step: i, msg: '전선을 연결할 회로가 아직 없습니다.' };
+        if (!done.has('wire')) return { step: i, msg: '전선을 연결할 회로가 아직 없습니다.', notes };
         break;
       case 'finalcheck':
-        if (!done.has('battery')) return { step: i, msg: '전지가 연결되어 있지 않아 최종 점등을 확인할 수 없습니다.' };
+        if (!done.has('battery')) return { step: i, msg: '전지가 연결되어 있지 않아 최종 점등을 확인할 수 없습니다.', notes };
         break;
       case 'backclose':
-        if (!done.has('glue5')) return { step: i, msg: '옆면들이 세워져 있지 않은데 뒷면만 먼저 붙일 수 없습니다.' };
-        if (!done.has('battery')) return { step: i, msg: '뒷면을 붙이고 나니 손이 들어가지 않아 전선을 연결할 수 없습니다.' };
-        if (!done.has('finalcheck')) return { step: i, msg: '뒷면을 붙인 뒤에 불이 안 들어오면 다시 뜯어야 합니다. 무엇을 먼저 확인하면 좋을까요?' };
+        if (!done.has('glue5')) return { step: i, msg: '옆면들이 세워져 있지 않은데 뒷면만 먼저 붙일 수 없습니다.', notes };
+        if (!done.has('battery')) return { step: i, msg: '뒷면을 붙이고 나니 손이 들어가지 않아 전선을 연결할 수 없습니다.', notes };
+        if (!done.has('finalcheck')) return { step: i, msg: '뒷면을 붙인 뒤에 불이 안 들어오면 다시 뜯어야 합니다. 무엇을 먼저 확인하면 좋을까요?', notes };
         break;
     }
     done.add(id);
@@ -78,8 +79,9 @@ function runSequence(seq) {
 
 // ---------- 장면 그리기 ----------
 let cv, ctx;
-let placing = false;          // 홀더 위치 클릭 대기 중
-let placeResolve = null;
+let curStep = -1;
+let placing = false;
+let lastFinalKey = '';
 
 function clearCanvas() {
   ctx.fillStyle = '#f4f6f9';
@@ -105,10 +107,6 @@ function sceneCut() {
   rect(30 + d.bw * S, 45, d.sw, d.sh, `옆 ${d.sw}×${d.sh}`);
   rect(40 + (d.bw + d.sw) * S, 45, d.sw, d.sh, `옆 ${d.sw}×${d.sh}`);
 }
-function sceneDryfit() {
-  clearCanvas(); caption('붙이지 않고 맞춰 보며 치수를 확인합니다');
-  drawAssembled(ctx, 10, 26, cv.width - 20, cv.height - 36, { walls: 'dashed', circuit: false });
-}
 function sceneFront() {
   clearCanvas(); caption('앞면 검은 종이를 도안대로 오리고 트레이싱지를 붙입니다');
   const d = dims();
@@ -129,7 +127,6 @@ function sceneCase(opts) {
   clearCanvas(); caption(opts.caption);
   drawAssembled(ctx, 10, 26, cv.width - 20, cv.height - 36, opts);
 }
-// 홀더 위치 정하기 화면 (뒷면 바깥)
 function scenePlace() {
   clearCanvas();
   caption('건전지 홀더를 붙일 위치를 클릭하세요 (뒷면 바깥쪽)');
@@ -142,17 +139,17 @@ function scenePlace() {
   ctx.fillText('뒷면 바깥쪽 (위)', px + 6, py + 14);
   ctx.fillText('바닥 쪽 (아래)', px + 6, py + d.bh * S - 6);
   const hp = work.assembly.holderPos;
-  if (hp) drawHolderAt(px + hp.x * S, py + hp.y * S, S);
+  if (hp) {
+    const hw = 5.5 * S, hh = 2.5 * S;
+    const x = px + hp.x * S, y = py + hp.y * S;
+    ctx.fillStyle = '#3b4552'; ctx.strokeStyle = '#20272f';
+    ctx.beginPath(); ctx.roundRect(x - hw / 2, y - hh / 2, hw, hh, 4); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#cfd6de'; ctx.font = `${Math.max(9, S * 0.8)}px sans-serif`;
+    ctx.fillText('홀더', x - S, y + S * 0.3);
+  }
   cv._place = { px, py, S, d };
+  placing = true;
 }
-function drawHolderAt(x, y, S) {
-  const hw = 5.5 * S, hh = 2.5 * S;
-  ctx.fillStyle = '#3b4552'; ctx.strokeStyle = '#20272f';
-  ctx.beginPath(); ctx.roundRect(x - hw / 2, y - hh / 2, hw, hh, 4); ctx.fill(); ctx.stroke();
-  ctx.fillStyle = '#cfd6de'; ctx.font = `${Math.max(9, S * 0.8)}px sans-serif`;
-  ctx.fillText('홀더', x - S, y + S * 0.3);
-}
-// 최종 장면: 홀더 위치에 따라 서거나 넘어진다
 function sceneFinal() {
   clearCanvas();
   const d = dims();
@@ -164,10 +161,10 @@ function sceneFinal() {
   ctx.fillStyle = '#dcd2c2'; ctx.fillRect(0, floorY, cv.width, 40);
   ctx.save();
   if (stable) {
-    caption('완성! 플래카드가 잘 서 있습니다');
+    caption('완성품을 세워 봅니다');
     drawLitFront(ctx, (cv.width - pw) / 2, floorY - ph, pw, ph, light);
   } else {
-    caption('플래카드를 세워 보니…');
+    caption('완성품을 세워 보니…');
     ctx.translate(cv.width / 2, floorY);
     ctx.rotate(-1.25);
     drawLitFront(ctx, -pw / 2, -ph + 8, pw, ph, light);
@@ -176,103 +173,117 @@ function sceneFinal() {
   return stable;
 }
 
-// ---------- 진행 ----------
+// ---------- 화면 구성 ----------
+function validity() { return runSequence(work.order); }
+
 function render() {
   const seq = work.order;
+  const v = validity();
   const pool = SHUFFLED.filter(id => !seq.includes(id));
   $('order-pool').innerHTML = pool.map(id =>
     `<button class="order-card" data-id="${id}">${card(id).label}</button>`).join('') ||
-    '<p class="muted">모든 카드를 배치했습니다.</p>';
+    '<p class="muted">모든 카드를 배치했습니다. 카드를 눌러 각 단계를 확인해 보세요.</p>';
   $('order-seq').innerHTML = seq.length
-    ? seq.map((id, i) => `<button class="order-card placed" data-i="${i}"><span class="num">${i + 1}</span> ${card(id).label} ✕</button>`).join('')
-    : '<p class="muted">왼쪽 카드를 눌러 순서대로 배치하세요.</p>';
+    ? seq.map((id, i) => {
+        const state = v.step === i ? 'fail' : (v.step !== undefined && i > v.step) ? 'blocked' : 'okstep';
+        return `<div class="order-row">
+          <button class="order-card placed ${state} ${curStep === i ? 'current' : ''}" data-i="${i}">
+            <span class="num">${i + 1}</span> ${card(id).label}</button>
+          <button class="order-x" data-i="${i}" title="빼기">✕</button></div>`;
+      }).join('')
+    : '<p class="muted">왼쪽 카드를 눌러 순서대로 배치하세요.<br>배치한 카드를 누르면 그 단계의 모습이 보입니다.</p>';
   $('order-pool').querySelectorAll('button').forEach(b => b.addEventListener('click', () => {
-    if (readOnly || running) return;
-    work.order.push(b.dataset.id); touch(); render();
+    if (readOnly) return;
+    work.order.push(b.dataset.id); touch();
+    selectStep(work.order.length - 1);
   }));
-  $('order-seq').querySelectorAll('button').forEach(b => b.addEventListener('click', () => {
-    if (readOnly || running) return;
-    work.order.splice(parseInt(b.dataset.i), 1); touch(); render();
+  $('order-seq').querySelectorAll('.order-card').forEach(b => b.addEventListener('click', () =>
+    selectStep(parseInt(b.dataset.i))));
+  $('order-seq').querySelectorAll('.order-x').forEach(b => b.addEventListener('click', () => {
+    if (readOnly) return;
+    work.order.splice(parseInt(b.dataset.i), 1); touch();
+    curStep = -1; placing = false;
+    $('order-result').innerHTML = ''; $('order-tip').innerHTML = '';
+    render(); idleCanvas();
   }));
-  $('btn-order-run').disabled = seq.length !== CARDS.length || running;
+  $('btn-order-prev').disabled = curStep <= 0;
+  $('btn-order-next').disabled = curStep < 0 || curStep >= seq.length - 1;
 }
 
-function showTip(id) {
-  $('order-tip').innerHTML = TIPS[id] ? `<p class="hint">${TIPS[id]}</p>` : '';
+function idleCanvas() {
+  clearCanvas();
+  caption('배치한 카드를 누르면 그 단계에서 무슨 일이 일어나는지 보입니다');
 }
 
-function drawScene(id) {
-  switch (id) {
-    case 'cut': sceneCut(); break;
-    case 'dryfit': sceneDryfit(); break;
-    case 'front': sceneFront(); break;
-    case 'wire': sceneCase({ caption: '안쪽 면에 테이프와 LED를 붙입니다', walls: 'ghost', lit: false }); break;
-    case 'lightcheck': sceneCase({ caption: '전지를 잠시 대어 점등을 확인합니다', walls: 'ghost', lit: true }); break;
-    case 'glue5': sceneCase({ caption: '뒷면을 뺀 다섯 면을 조립합니다', walls: 'solid', lit: false }); break;
-    case 'finalcheck': sceneCase({ caption: '뒷면을 붙이기 전 마지막 점등 확인', walls: 'solid', lit: true }); break;
-  }
-}
-
-function waitPlacement() {
-  return new Promise(res => {
-    placing = true;
-    placeResolve = res;
-    scenePlace();
-  });
-}
-
-let running = false;
-async function play() {
-  if (running) return;
-  running = true;
-  render();
+function selectStep(i) {
   const seq = work.order;
-  const result = runSequence(seq);
+  if (i < 0 || i >= seq.length) return;
+  curStep = i; placing = false;
+  const v = validity();
+  const id = seq[i];
   const out = $('order-result');
   out.innerHTML = '';
   $('order-tip').innerHTML = '';
 
-  for (let i = 0; i < seq.length; i++) {
-    const id = seq[i];
-    const fail = result.step === i;
-    out.innerHTML += `<div class="${fail ? 'order-fail' : 'order-step'}">${i + 1}. ${card(id).label} ${fail ? '→ 중단' : '→ 완료'}</div>`;
-    if (fail) {
-      out.innerHTML += `<p class="warn">${result.msg}</p><p class="hint">카드를 다시 배열하고 실행해 보세요.</p>`;
-      addLog(`조립 순서 — ${i + 1}번째 단계에서 중단`); renderLogList();
-      running = false; render();
-      return;
+  if (v.step !== undefined && i > v.step) {
+    clearCanvas();
+    caption('이 단계까지 갈 수 없습니다');
+    out.innerHTML = `<p class="hint">${v.step + 1}번째 단계(${card(seq[v.step]).label})에서 막혀 그 다음으로 진행할 수 없어요. 그 카드를 눌러 이유를 확인해 보세요.</p>`;
+  } else if (v.step === i) {
+    clearCanvas();
+    caption(`${i + 1}. ${card(id).label} — 여기서 문제가 생깁니다`);
+    ctx.fillStyle = '#c0392b'; ctx.font = 'bold 15px sans-serif';
+    ctx.fillText('이 순서로는 진행할 수 없어요', 20, 60);
+    out.innerHTML = `<p class="warn">${v.msg}</p><p class="hint">카드를 다시 배열해 보세요.</p>`;
+  } else {
+    // 정상 진행 단계
+    $('order-tip').innerHTML = TIPS[id] ? `<p class="hint">${TIPS[id]}</p>` : '';
+    switch (id) {
+      case 'cut': sceneCut(); break;
+      case 'dryfit': sceneCase({ caption: '붙이지 않고 맞춰 보며 치수를 확인합니다', walls: 'dashed', circuit: false }); break;
+      case 'front': sceneFront(); break;
+      case 'wire': sceneCase({ caption: '펼친 판의 안쪽 면에 테이프와 LED를 붙입니다', walls: 'ghost', lit: false }); break;
+      case 'lightcheck': sceneCase({ caption: '전지를 잠시 대어 점등을 확인합니다', walls: 'ghost', lit: true }); break;
+      case 'glue5': sceneCase({ caption: '뒷면을 뺀 다섯 면을 조립합니다', walls: 'solid', lit: false }); break;
+      case 'battery': scenePlace(); break;
+      case 'finalcheck': sceneCase({ caption: '뒷면을 붙이기 전 마지막 점등 확인', walls: 'solid', lit: true }); break;
+      case 'backclose': {
+        if (seq.length === CARDS.length && v.ok) {
+          const stable = sceneFinal();
+          const key = JSON.stringify([seq, work.assembly.holderPos, stable]);
+          if (key !== lastFinalKey) {
+            lastFinalKey = key;
+            if (stable) {
+              out.innerHTML = `<p class="ok">끝까지 진행되었습니다! 실제 제작도 이 순서대로 해 보세요.</p>`;
+              addLog('조립 순서 — 끝까지 진행됨, 완성품이 잘 섬');
+            } else {
+              out.innerHTML = `<p class="hint">플래카드가 넘어졌어요. 홀더가 받침 역할을 하려면 어디에 붙이는 게 좋을까요? (건전지 홀더 카드를 눌러 위치를 바꿔 보세요)</p>`;
+              addLog('조립 순서 — 완성했지만 넘어짐 (홀더 위치)');
+            }
+            renderLogList();
+          } else {
+            out.innerHTML = stable
+              ? `<p class="ok">끝까지 진행되었습니다!</p>`
+              : `<p class="hint">플래카드가 넘어졌어요. 건전지 홀더 카드를 눌러 위치를 바꿔 보세요.</p>`;
+          }
+          v.notes.forEach(n => out.innerHTML += `<p class="hint">${n}</p>`);
+        } else {
+          sceneCase({ caption: '뒷면을 붙여 케이스를 닫습니다', walls: 'solid', lit: false });
+        }
+        break;
+      }
     }
-    showTip(id);
-    if (id === 'battery') {
-      await waitPlacement();          // 학생이 홀더 위치를 클릭할 때까지 대기
-      await new Promise(r => setTimeout(r, 700));
-    } else if (id === 'backclose') {
-      // 마지막 장면에서 처리
-    } else {
-      drawScene(id);
-      await new Promise(r => setTimeout(r, 950));
-    }
+    if (id === 'glue5') v.notes.forEach(n => out.innerHTML += `<p class="hint">${n}</p>`);
+    if (id === 'battery' && !work.assembly.holderPos)
+      out.innerHTML = '<p class="muted">화면의 뒷면 그림에서 홀더를 붙일 곳을 클릭하세요.</p>';
   }
-  const stable = sceneFinal();
-  if (result.ok) {
-    if (stable) {
-      out.innerHTML += `<p class="ok">끝까지 진행되었습니다! 실제 제작도 이 순서대로 해 보세요.</p>`;
-      addLog('조립 순서 — 끝까지 진행됨, 완성품이 잘 섬'); renderLogList();
-    } else {
-      out.innerHTML += `<p class="hint">플래카드가 넘어졌어요. 홀더가 받침 역할을 하려면 어디에 붙이는 게 좋을까요?</p>`;
-      $('btn-holder-again').classList.remove('hidden');
-      addLog('조립 순서 — 완성했지만 넘어짐 (홀더 위치)'); renderLogList();
-    }
-    result.notes.forEach(n => out.innerHTML += `<p class="hint">${n}</p>`);
-  }
-  running = false; render();
+  render();
 }
 
 export function initAssembly() {
   cv = $('order-canvas');
   ctx = cv.getContext('2d');
-  clearCanvas();
-  caption('카드를 순서대로 배열하고 [순서대로 실행]을 누르면 여기서 제작 과정이 진행됩니다');
+  idleCanvas();
 
   cv.addEventListener('pointerdown', e => {
     if (!placing || readOnly) return;
@@ -285,30 +296,20 @@ export function initAssembly() {
     if (cx < 0 || cx > pl.d.bw || cy < 0 || cy > pl.d.bh) return;
     work.assembly.holderPos = { x: Math.round(cx * 2) / 2, y: Math.round(cy * 2) / 2 };
     touch();
+    sheetLog('조립 — 홀더 위치', `x=${work.assembly.holderPos.x}, y=${work.assembly.holderPos.y}`);
     scenePlace();
-    if (placeResolve) { placing = false; const r2 = placeResolve; placeResolve = null; setTimeout(r2, 400); }
+    $('order-result').innerHTML = '<p class="muted">위치를 정했습니다. 다른 곳을 클릭해 바꿀 수도 있어요. 다음 단계로 넘어가 보세요.</p>';
   });
 
-  $('btn-order-run').addEventListener('click', play);
+  $('btn-order-prev').addEventListener('click', () => selectStep(curStep - 1));
+  $('btn-order-next').addEventListener('click', () => selectStep(curStep + 1));
   $('btn-order-reset').addEventListener('click', () => {
-    if (readOnly || running) return;
+    if (readOnly) return;
     work.order = []; touch();
+    curStep = -1; placing = false;
     $('order-result').innerHTML = ''; $('order-tip').innerHTML = '';
-    $('btn-holder-again').classList.add('hidden');
-    clearCanvas();
-    caption('카드를 순서대로 배열하고 [순서대로 실행]을 누르면 여기서 제작 과정이 진행됩니다');
+    idleCanvas();
     render();
-  });
-  $('btn-holder-again').addEventListener('click', async () => {
-    if (readOnly || running) return;
-    $('btn-holder-again').classList.add('hidden');
-    await waitPlacement();
-    const stable = sceneFinal();
-    if (!stable) $('btn-holder-again').classList.remove('hidden');
-    else {
-      $('order-result').innerHTML += `<p class="ok">이제 잘 섭니다!</p>`;
-      addLog('조립 순서 — 홀더 위치 수정 후 잘 섬'); renderLogList();
-    }
   });
 
   document.addEventListener('work-loaded', refreshAssembly);
@@ -316,5 +317,7 @@ export function initAssembly() {
 }
 export function refreshAssembly() {
   if (!work.assembly) work.assembly = { holderPos: null };
+  curStep = -1; placing = false;
   render();
+  idleCanvas();
 }

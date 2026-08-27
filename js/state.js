@@ -73,7 +73,8 @@ export const DEFAULT_CONFIG = {
   letterMin: 5, letterMax: 8, pictoMin: 4, pictoMax: 5,
   showSupply: true, showMeasure: true, askPredict: true, questionFeedback: true,
   overLimit: 'warn',        // 'warn' | 'block'
-  classCode: '',            // 빈 값이면 반 코드 검사 안 함
+  classCode: '',            // 빈 값이면 반 코드 검사 안 함 (고정 코드)
+  dailyCode: false,         // 켜면 매일 자동으로 바뀌는 입장 코드 사용 (관리자 화면에 오늘 코드 표시)
   adminPin: '2026',
   supabaseUrl: '', supabaseKey: '',
   sheetUrl: '',             // Google Apps Script 웹 앱 URL — 설정하면 학생 활동·피드백이 시트에 기록됨
@@ -95,6 +96,14 @@ function loadConfig() {
 export function saveConfig() {
   localStorage.setItem(CONFIG_KEY, JSON.stringify(config));
 }
+// 오늘의 입장 코드: PIN+날짜에서 모든 기기가 똑같이 계산 — 서버·재배포 없이 매일 바뀐다
+export function todayCode() {
+  const s = config.adminPin + '|' + new Date().toISOString().slice(0, 10);
+  let h = 0;
+  for (const ch of s) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return String(1000 + h % 9000);
+}
+
 export function exportConfigCode() {
   return btoa(unescape(encodeURIComponent(JSON.stringify(config))));
 }
@@ -202,7 +211,8 @@ function flushSheet() {
   if (!sheetQueue.length || !config.sheetUrl) return;
   const body = JSON.stringify(sheetQueue.splice(0));
   try {
-    fetch(config.sheetUrl, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain' }, body });
+    fetch(config.sheetUrl, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain' }, body })
+      .catch(() => { /* 네트워크 실패는 조용히 무시 */ });
   } catch (e) { /* ignore */ }
 }
 window.addEventListener('beforeunload', () => {
@@ -283,6 +293,14 @@ export async function cloudList() {
   const c = sb();
   if (!c) return null;
   const res = await fetch(`${c.url}?select=id,ban,num,updated_at&order=ban,num`, { headers: c.headers });
+  if (!res.ok) throw new Error('불러오기 실패 ' + res.status);
+  return res.json();
+}
+// 한 반의 작업을 내용(payload)까지 — 실시간 보드용
+export async function cloudListBan(ban) {
+  const c = sb();
+  if (!c) return [];
+  const res = await fetch(`${c.url}?ban=eq.${ban}&select=id,ban,num,updated_at,payload&order=num`, { headers: c.headers });
   if (!res.ok) throw new Error('불러오기 실패 ' + res.status);
   return res.json();
 }

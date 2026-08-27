@@ -97,7 +97,12 @@
         <button data-tool="tape">전도성 테이프</button>
         <button data-tool="led">LED</button>
         <button data-tool="res" id="tool-res" style="display:none">저항</button>
+        <button data-tool="holder">건전지 홀더</button>
         <button data-tool="erase">지우개</button>
+      </div>
+      <div class="tool-row">
+        <button id="btn-undo" disabled>실행 취소</button>
+        <button id="btn-circuit-reset">처음부터</button>
       </div>
       <p id="tool-fact" class="muted small"></p>
       <p id="tape-hint" class="muted small" style="display:none">클릭으로 점을 찍고,<br>더블클릭·Enter·[테이프 완료]로 끝내요.</p>
@@ -187,9 +192,9 @@
         <h3>내가 정한 순서</h3>
         <div id="order-seq"></div>
         <div class="tool-row">
-          <button id="btn-order-run" class="primary" disabled>순서대로 실행</button>
+          <button id="btn-order-prev" disabled>이전 단계</button>
+          <button id="btn-order-next" disabled>다음 단계</button>
           <button id="btn-order-reset">처음부터</button>
-          <button id="btn-holder-again" class="hidden">홀더 위치만 다시 정하기</button>
         </div>
         <div id="order-result"></div>
       </div>

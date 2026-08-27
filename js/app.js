@@ -1,5 +1,5 @@
 // 앱 진입점: 로그인(반·번호) → 탭 화면
-import { config, login, student, onCloudStatus, sheetLog } from './state.js';
+import { config, login, student, onCloudStatus, sheetLog, todayCode } from './state.js';
 import { initCase, refreshFromWork } from './case3d.js';
 import { initCircuit, refreshCircuit } from './circuit.js';
 import { initDesign, refreshDesign } from './design.js';
@@ -14,7 +14,7 @@ function setupLogin() {
   const banSel = $('login-ban'), numSel = $('login-num');
   banSel.innerHTML = Array.from({ length: 10 }, (_, i) => `<option value="${i + 1}">${i + 1}반</option>`).join('');
   numSel.innerHTML = Array.from({ length: 35 }, (_, i) => `<option value="${i + 1}">${i + 1}번</option>`).join('');
-  $('login-code-row').style.display = config.classCode ? '' : 'none';
+  $('login-code-row').style.display = (config.dailyCode || config.classCode) ? '' : 'none';
 
   try {
     const last = JSON.parse(localStorage.getItem('lps_last') || 'null');
@@ -25,7 +25,12 @@ function setupLogin() {
   $('header-admin').addEventListener('click', openAdmin);
 
   $('login-btn').addEventListener('click', () => {
-    if (config.classCode && $('login-code').value.trim() !== config.classCode) {
+    const entered = $('login-code').value.trim();
+    if (config.dailyCode && entered !== todayCode()) {
+      $('login-err').textContent = '오늘의 입장 코드가 다릅니다. 선생님께 확인하세요.';
+      return;
+    }
+    if (!config.dailyCode && config.classCode && entered !== config.classCode) {
       $('login-err').textContent = '반 코드가 다릅니다. 선생님께 확인하세요.';
       return;
     }

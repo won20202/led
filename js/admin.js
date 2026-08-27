@@ -1,7 +1,7 @@
 // 관리자 모드: 로그인 화면의 [관리자] 버튼 또는 URL ?admin=1 → PIN 입력.
 import { config, saveConfig, exportConfigCode, importConfigCode, getMisses, clearMisses,
-         cloudList, cloudGet, cloudDelete, setReadOnlyWork, DEFAULT_CONFIG, DEFAULT_RUBRIC,
-         sheetLogFor, sheetFlushNow } from './state.js';
+         cloudList, cloudListBan, cloudGet, cloudDelete, setReadOnlyWork, DEFAULT_CONFIG, DEFAULT_RUBRIC,
+         sheetLogFor, sheetFlushNow, todayCode } from './state.js';
 
 const $ = id => document.getElementById(id);
 
@@ -32,7 +32,8 @@ const FIELDS = [
   ['showMeasure', '실측값 표시', 'checkbox'],
   ['askPredict', '예측 먼저 (조립·점등 전 예측 입력)', 'checkbox'],
   ['questionFeedback', '질문형 피드백 표시', 'checkbox'],
-  ['classCode', '반 입장 코드 (비우면 검사 안 함)', 'text'],
+  ['classCode', '고정 반 코드 (비우면 검사 안 함)', 'text'],
+  ['dailyCode', '매일 바뀌는 입장 코드 사용 (위 고정 코드 대신)', 'checkbox'],
   ['adminPin', '관리자 PIN', 'text'],
   ['supabaseUrl', 'Supabase URL (비우면 이 기기에만 저장)', 'text'],
   ['supabaseKey', 'Supabase anon key', 'text'],
@@ -42,7 +43,10 @@ const FIELDS = [
 function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;'); }
 
 function renderSettings() {
-  $('adm-settings').innerHTML = FIELDS.map(([k, label, type]) => {
+  const codeBanner = config.dailyCode
+    ? `<p class="measure">오늘의 입장 코드: <b style="font-size:20px">${todayCode()}</b> — 칠판에 적어 주세요. 자정에 자동으로 바뀝니다. (모든 기기에서 같은 코드가 계산되므로 재배포 불필요)</p>`
+    : '';
+  $('adm-settings').innerHTML = codeBanner + FIELDS.map(([k, label, type]) => {
     if (type === 'checkbox')
       return `<label class="adm-row"><span>${label}</span><input type="checkbox" data-k="${k}" ${config[k] ? 'checked' : ''}></label>`;
     return `<label class="adm-row"><span>${label}</span><input type="${type}" data-k="${k}" value="${esc(config[k] ?? '')}" step="any"></label>`;
@@ -186,27 +190,74 @@ async function renderWorks() {
   }
   try {
     cloudRows = await cloudList();
-    // 반별로 묶어서 보여준다 (10개 반 × 30명 규모)
+    const openBans = new Set([...document.querySelectorAll('.adm-ban[open]')].map(d => d.dataset.ban));
     const byBan = {};
     cloudRows.forEach(r => { (byBan[r.ban] = byBan[r.ban] || []).push(r); });
     html += cloudRows.length
       ? Object.keys(byBan).sort((a, b) => a - b).map(ban =>
-          `<details class="adm-ban"><summary>${ban}반 (${byBan[ban].length}명)</summary>
-           <table class="adm-table"><tr><th>학번</th><th>마지막 저장</th><th style="width:150px"></th></tr>` +
-          byBan[ban].map(r => `<tr><td>${r.ban}반 ${r.num}번</td><td>${new Date(r.updated_at).toLocaleString('ko-KR')}</td>
-            <td><button class="w-open" data-id="cloud:${r.id}">보기</button>
-                <button class="w-note" data-bn="${r.ban}:${r.num}">메모</button>
-                <button class="w-del" data-id="cloud:${r.id}">삭제</button></td></tr>`).join('') +
-          '</table></details>').join('')
+          `<details class="adm-ban" data-ban="${ban}" ${openBans.has(String(ban)) ? 'open' : ''}>
+             <summary>${ban}반 실시간 보드 (${byBan[ban].length}명)</summary>
+             <div class="board-grid" data-ban="${ban}"><p class="muted">불러오는 중…</p></div>
+           </details>`).join('')
       : '<p class="muted">아직 저장된 학생 작업이 없습니다.</p>';
   } catch (e) {
     html += `<p class="warn">서버에서 불러오지 못했습니다: ${esc(e.message)}</p>`;
   }
   el.innerHTML = html;
   bindWorkButtons();
+  // 펼친 반의 보드를 채운다 (payload는 펼쳤을 때만 받아옴 — 300명 규모 대비)
+  el.querySelectorAll('.adm-ban').forEach(det => {
+    const load = () => { if (det.open) loadBanBoard(det.dataset.ban); };
+    det.addEventListener('toggle', load);
+    load();
+  });
+}
+
+// 학생 작업 요약 칩 (실시간 보드용)
+function summarize(w) {
+  const chips = [];
+  const on = (label, ok) => chips.push(`<span class="chip ${ok ? 'on' : ''}">${label}</span>`);
+  on('케이스', w.caseTab && w.caseTab.assembled);
+  const leds = (w.circuit && w.circuit.leds || []).length;
+  on(leds ? `LED ${leds}` : 'LED', leds > 0);
+  on('점등', w.circuit && w.circuit.tested);
+  on('도안', w.design && ((w.design.letters || []).some(l => l.text) || (w.design.drawing && w.design.drawing.strokes.length)));
+  on('조립순서', (w.order || []).length === 9);
+  return chips.join('');
+}
+
+async function loadBanBoard(ban) {
+  const grid = document.querySelector(`.board-grid[data-ban="${ban}"]`);
+  if (!grid) return;
+  try {
+    const rows = await cloudListBan(ban);
+    grid.innerHTML = rows.map(r => `
+      <div class="stu-card">
+        <div class="stu-head"><b>${r.num}번</b>
+          <span class="muted small">${new Date(r.updated_at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}</span></div>
+        <div class="stu-chips">${summarize(r.payload || {})}</div>
+        <div class="stu-btns">
+          <button class="w-open" data-id="cloud:${r.id}">보기</button>
+          <button class="w-note" data-bn="${r.ban}:${r.num}">메모</button>
+          <button class="w-del" data-id="cloud:${r.id}">삭제</button>
+        </div>
+      </div>`).join('') || '<p class="muted">아직 없음</p>';
+    bindGridButtons(grid);
+  } catch (e) {
+    grid.innerHTML = `<p class="warn">불러오기 실패: ${esc(e.message)}</p>`;
+  }
+}
+function bindGridButtons(scope) {
+  bindOpenButtons(scope);
+  bindNoteButtons(scope);
+  bindDelButtons(scope);
 }
 function bindWorkButtons() {
-  $('adm-works').querySelectorAll('.w-open').forEach(b => b.addEventListener('click', async () => {
+  const s = $('adm-works');
+  bindOpenButtons(s); bindNoteButtons(s); bindDelButtons(s);
+}
+function bindOpenButtons(scope) {
+  scope.querySelectorAll('.w-open').forEach(b => b.addEventListener('click', async () => {
     const kind = b.dataset.id.split(':')[0];
     const id = b.dataset.id.split(':').slice(1).join(':');
     let w = null;
@@ -220,8 +271,10 @@ function bindWorkButtons() {
     if (!w) { alert('데이터가 없습니다.'); return; }
     openReadOnly(w, id, kind === 'cloud' ? id : null);
   }));
-  // 교사 메모 → 구글 시트에 기록
-  $('adm-works').querySelectorAll('.w-note').forEach(b => b.addEventListener('click', () => {
+}
+// 교사 메모 → 구글 시트에 기록
+function bindNoteButtons(scope) {
+  scope.querySelectorAll('.w-note').forEach(b => b.addEventListener('click', () => {
     if (!config.sheetUrl) { alert('먼저 수업 설정에 Google Sheet 기록 URL을 넣어 주세요.'); return; }
     const [ban, num] = b.dataset.bn.split(':').map(Number);
     const text = prompt(`${ban}반 ${num}번 학생에 대한 메모 (시트에 기록됩니다)`);
@@ -231,8 +284,10 @@ function bindWorkButtons() {
       alert('기록했습니다.');
     }
   }));
-  // 학생 작업 초기화 (잘못 로그인한 학번 정리, 재작업 등)
-  $('adm-works').querySelectorAll('.w-del').forEach(b => b.addEventListener('click', async () => {
+}
+// 학생 작업 초기화 (잘못 로그인한 학번 정리, 재작업 등)
+function bindDelButtons(scope) {
+  scope.querySelectorAll('.w-del').forEach(b => b.addEventListener('click', async () => {
     const kind = b.dataset.id.split(':')[0];
     const id = b.dataset.id.split(':').slice(1).join(':');
     if (!confirm(`${id} 작업을 삭제(초기화)할까요? 되돌릴 수 없습니다.`)) return;
@@ -315,6 +370,7 @@ export function initAdmin() {
   $('adm-save').addEventListener('click', () => {
     collectSettings(); collectRubric(); collectFaq();
     saveConfig();
+    renderSettings(); // 오늘의 입장 코드 배너 갱신
     alert('저장되었습니다. 학생 화면은 새로고침하면 반영됩니다.');
   });
   $('adm-rubric-add').addEventListener('click', () => {
