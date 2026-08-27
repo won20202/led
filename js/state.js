@@ -73,8 +73,17 @@ export const DEFAULT_CONFIG = {
   letterMin: 5, letterMax: 8, pictoMin: 4, pictoMax: 5,
   showSupply: true, showMeasure: true, askPredict: true, questionFeedback: true,
   overLimit: 'warn',        // 'warn' | 'block'
-  classCode: '',            // 빈 값이면 반 코드 검사 안 함 (고정 코드)
-  dailyCode: false,         // 켜면 매일 자동으로 바뀌는 입장 코드 사용 (관리자 화면에 오늘 코드 표시)
+  // 학교 기본 정보 — 해마다 바꿔 쓴다
+  grade: 2, banCount: 10, numCount: 35,
+  // 입장 방식: none(코드 없음) | fixed(고정 코드) | daily(매일 바뀜) | session(수업 코드: 반·교시 지정)
+  entryMode: 'none',
+  classCode: '',            // fixed 모드에서 쓰는 고정 코드
+  periods: [                // 교시 시간표 (session 모드용, 관리자가 수정)
+    { start: '09:00', end: '09:45' }, { start: '09:55', end: '10:40' },
+    { start: '10:50', end: '11:35' }, { start: '11:45', end: '12:30' },
+    { start: '13:20', end: '14:05' }, { start: '14:15', end: '15:00' },
+    { start: '15:10', end: '15:55' },
+  ],
   adminPin: '2026',
   supabaseUrl: '', supabaseKey: '',
   sheetUrl: '',             // Google Apps Script 웹 앱 URL — 설정하면 학생 활동·피드백이 시트에 기록됨
@@ -89,19 +98,49 @@ export let config = loadConfig();
 function loadConfig() {
   try {
     const raw = localStorage.getItem(CONFIG_KEY);
-    if (raw) return { ...DEFAULT_CONFIG, ...JSON.parse(raw) };
+    if (raw) {
+      const c = { ...DEFAULT_CONFIG, ...JSON.parse(raw) };
+      // 옛 설정 이관: dailyCode/classCode → entryMode
+      if (!c.entryMode) c.entryMode = c.dailyCode ? 'daily' : (c.classCode ? 'fixed' : 'none');
+      return c;
+    }
   } catch (e) { /* 손상된 설정은 무시하고 기본값 */ }
   return { ...DEFAULT_CONFIG };
 }
 export function saveConfig() {
   localStorage.setItem(CONFIG_KEY, JSON.stringify(config));
 }
-// 오늘의 입장 코드: PIN+날짜에서 모든 기기가 똑같이 계산 — 서버·재배포 없이 매일 바뀐다
-export function todayCode() {
-  const s = config.adminPin + '|' + new Date().toISOString().slice(0, 10);
+// ---- 입장 코드: PIN+날짜(+반·교시)에서 모든 기기가 똑같이 계산 — 서버·재배포 없이 유효 ----
+function dateStr() {
+  const d = new Date();
+  return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+}
+function codeOf(...parts) {
+  const s = config.adminPin + '|' + parts.join('|');
   let h = 0;
   for (const ch of s) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
   return String(1000 + h % 9000);
+}
+// 일일 코드 (전체 공용, 그날 하루)
+export function todayCode() { return codeOf('day', dateStr()); }
+// 수업 코드: 특정 반 + 교시 범위 (p1, p2는 0부터)
+export function classSessionCode(ban, p1, p2) { return codeOf('ban', dateStr(), ban, p1, p2); }
+// 미실시자 개인 코드: 특정 학생, 그날 하루
+export function studentDayCode(ban, num) { return codeOf('stu', dateStr(), ban, num); }
+const toMin = t => { const [h, m] = String(t).split(':').map(Number); return h * 60 + m; };
+// 학생 기기에서 수업 코드 검증: 자기 반의 모든 교시 조합을 계산해 일치하는 게
+// 있으면, 지금 시각이 그 교시 범위(앞뒤 10분 여유) 안인지 확인한다.
+export function sessionCodeValid(code, ban) {
+  if (!/^\d{4}$/.test(code)) return false;
+  const per = config.periods || [];
+  const now = new Date();
+  const mins = now.getHours() * 60 + now.getMinutes();
+  for (let p1 = 0; p1 < per.length; p1++)
+    for (let p2 = p1; p2 < per.length; p2++) {
+      if (classSessionCode(ban, p1, p2) !== code) continue;
+      return mins >= toMin(per[p1].start) - 10 && mins <= toMin(per[p2].end) + 10;
+    }
+  return false;
 }
 
 export function exportConfigCode() {
@@ -145,7 +184,7 @@ export let work = blankWork();
 export let readOnly = false; // 관리자가 학생 작업을 열람할 때
 
 export function studentKey(s) { return `lps_work_${s.ban}-${s.num}`; }
-export function studentId(s) { return `2-${s.ban}-${s.num}`; }
+export function studentId(s) { return `${config.grade}-${s.ban}-${s.num}`; }
 
 // work 객체는 교체하지 않고 내용만 바꾼다 (모듈들이 참조를 캡처하고 있음)
 function replaceWork(w) {
@@ -200,7 +239,7 @@ export function sheetLogFor(ban, num, event, detail) {
   sheetQueue.push({
     ts: new Date().toISOString(),
     ban, num,
-    id: `2-${ban}-${num}`,
+    id: `${config.grade}-${ban}-${num}`,
     event, detail: String(detail || '').slice(0, 500),
   });
   if (!flushTimer) flushTimer = setTimeout(flushSheet, 12000);

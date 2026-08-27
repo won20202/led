@@ -208,6 +208,9 @@ button.link:hover { color: #4a5561; background: transparent; }
 .chip { font-size: 11px; padding: 2px 7px; border-radius: 999px; background: #eef0f4; color: #9aa3ad; }
 .chip.on { background: #e3f5e9; color: #1e8e4e; font-weight: 600; }
 .stu-btns button { font-size: 11px; padding: 3px 7px; }
+.stu-card.off { background: #f2f3f6; opacity: 0.85; }
+.att-badge { display: inline-block; font-size: 11px; background: #fde8e6; color: #b03a2e; border-radius: 6px; padding: 2px 7px; margin: 4px 0; font-weight: 600; }
+.ec-p-row span { width: 44px; }
 
 /* 조립 순서 카드 상태 */
 .order-row { display: flex; gap: 4px; align-items: center; }

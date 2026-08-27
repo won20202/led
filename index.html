@@ -257,6 +257,17 @@
         <button id="adm-export">내보내기(복사)</button>
         <button id="adm-import">불러오기</button>
       </details>
+      <details><summary>입장 코드 (수업·미실시자·시간표)</summary>
+        <div id="adm-entry"></div>
+      </details>
+      <details><summary>구글 시트 연동 코드 (학기마다 새 시트 연결)</summary>
+        <p class="muted small">① 새 구글 시트 만들기 → 확장 프로그램 → Apps Script에 아래 코드 붙여넣기<br>
+        ② 배포 → 새 배포 → 웹 앱 → 액세스 권한 "모든 사용자" → 배포<br>
+        ③ 나온 웹 앱 URL을 수업 설정의 [Google Sheet 기록 URL]에 넣고 저장 → 설정 코드로 배포<br>
+        ④ [시트 기록 테스트] 버튼으로 확인</p>
+        <textarea id="adm-gas" rows="10" readonly style="width:100%;font-family:monospace;font-size:11px"></textarea>
+        <button id="adm-gas-copy">코드 복사</button>
+      </details>
       <details><summary>평가 기준 (배점표)</summary>
         <p class="muted small">영역·조건·배점을 자유롭게 수정하세요. 학생에게는 도움말의 [평가 기준 보기]로 보입니다. 저장은 위의 [설정 저장].</p>
         <div id="adm-rubric"></div>

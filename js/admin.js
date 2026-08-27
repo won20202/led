@@ -1,11 +1,14 @@
 // 관리자 모드: 로그인 화면의 [관리자] 버튼 또는 URL ?admin=1 → PIN 입력.
 import { config, saveConfig, exportConfigCode, importConfigCode, getMisses, clearMisses,
          cloudList, cloudListBan, cloudGet, cloudDelete, setReadOnlyWork, DEFAULT_CONFIG, DEFAULT_RUBRIC,
-         sheetLogFor, sheetFlushNow, todayCode } from './state.js';
+         sheetLogFor, sheetFlushNow, todayCode, classSessionCode, studentDayCode } from './state.js';
 
 const $ = id => document.getElementById(id);
 
 const FIELDS = [
+  ['grade', '학년', 'number'],
+  ['banCount', '반 수', 'number'],
+  ['numCount', '한 반의 최대 번호', 'number'],
   ['thickness', '재료(우드락) 두께 (cm)', 'number'],
   ['targetW', '완성 목표 가로 (cm)', 'number'],
   ['targetH', '완성 목표 세로 (cm)', 'number'],
@@ -32,8 +35,7 @@ const FIELDS = [
   ['showMeasure', '실측값 표시', 'checkbox'],
   ['askPredict', '예측 먼저 (조립·점등 전 예측 입력)', 'checkbox'],
   ['questionFeedback', '질문형 피드백 표시', 'checkbox'],
-  ['classCode', '고정 반 코드 (비우면 검사 안 함)', 'text'],
-  ['dailyCode', '매일 바뀌는 입장 코드 사용 (위 고정 코드 대신)', 'checkbox'],
+  ['classCode', '고정 코드 (입장 방식이 "고정 코드"일 때)', 'text'],
   ['adminPin', '관리자 PIN', 'text'],
   ['supabaseUrl', 'Supabase URL (비우면 이 기기에만 저장)', 'text'],
   ['supabaseKey', 'Supabase anon key', 'text'],
@@ -43,10 +45,21 @@ const FIELDS = [
 function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;'); }
 
 function renderSettings() {
-  const codeBanner = config.dailyCode
-    ? `<p class="measure">오늘의 입장 코드: <b style="font-size:20px">${todayCode()}</b> — 칠판에 적어 주세요. 자정에 자동으로 바뀝니다. (모든 기기에서 같은 코드가 계산되므로 재배포 불필요)</p>`
-    : '';
-  $('adm-settings').innerHTML = codeBanner + FIELDS.map(([k, label, type]) => {
+  const codeBanner =
+    config.entryMode === 'daily'
+      ? `<p class="measure">오늘의 입장 코드: <b style="font-size:20px">${todayCode()}</b> — 자정에 자동으로 바뀝니다. (모든 기기에서 같은 코드가 계산되므로 재배포 불필요)</p>`
+      : config.entryMode === 'session'
+        ? `<p class="measure">입장 방식이 "수업 코드"입니다 — 아래 [입장 코드] 섹션에서 반·교시를 골라 코드를 만드세요.</p>`
+        : '';
+  $('adm-settings').innerHTML = codeBanner +
+  `<label class="adm-row"><span>입장 방식</span>
+     <select data-k="entryMode">
+       <option value="none" ${config.entryMode === 'none' ? 'selected' : ''}>코드 없음</option>
+       <option value="fixed" ${config.entryMode === 'fixed' ? 'selected' : ''}>고정 코드</option>
+       <option value="daily" ${config.entryMode === 'daily' ? 'selected' : ''}>매일 바뀌는 코드</option>
+       <option value="session" ${config.entryMode === 'session' ? 'selected' : ''}>수업 코드 (반·교시 지정, 권장)</option>
+     </select></label>` +
+  FIELDS.map(([k, label, type]) => {
     if (type === 'checkbox')
       return `<label class="adm-row"><span>${label}</span><input type="checkbox" data-k="${k}" ${config[k] ? 'checked' : ''}></label>`;
     return `<label class="adm-row"><span>${label}</span><input type="${type}" data-k="${k}" value="${esc(config[k] ?? '')}" step="any"></label>`;
@@ -65,7 +78,67 @@ function collectSettings() {
     else if (el.type === 'number') config[k] = parseFloat(el.value) || DEFAULT_CONFIG[k];
     else config[k] = el.value;
   });
+  collectPeriods();
   saveConfig();
+}
+
+// ---- 입장 코드 (수업 코드·미실시자·시간표) ----
+function periodRow(p, i) {
+  return `<div class="tool-row ec-p-row"><span>${i + 1}교시</span>
+    <input type="time" class="ec-ps" value="${p.start}"> ~ <input type="time" class="ec-pe" value="${p.end}">
+    <button class="ec-p-del small-btn">✕</button></div>`;
+}
+function collectPeriods() {
+  const rows = [...document.querySelectorAll('#adm-entry .ec-p-row')];
+  if (rows.length)
+    config.periods = rows.map(r => ({
+      start: r.querySelector('.ec-ps').value || '09:00',
+      end: r.querySelector('.ec-pe').value || '09:45',
+    }));
+}
+function renderEntry() {
+  const per = config.periods || [];
+  const banOpts = Array.from({ length: config.banCount }, (_, i) => `<option value="${i + 1}">${i + 1}반</option>`).join('');
+  const perOpts = per.map((p, i) => `<option value="${i}">${i + 1}교시 (${p.start}~${p.end})</option>`).join('');
+  $('adm-entry').innerHTML = `
+    <h4>수업 코드 만들기</h4>
+    <p class="muted small">반과 교시를 고르면 오늘의 수업 코드가 나옵니다. 그 반 학생만, 그 교시 시간(앞뒤 10분 여유)에만 입장할 수 있고 날마다 바뀝니다. 수업이 변경되면 여기서 다시 골라 새 코드를 칠판에 적어 주면 됩니다.</p>
+    <div class="tool-row">
+      <select id="ec-ban">${banOpts}</select>
+      <select id="ec-p1">${perOpts}</select> ~ <select id="ec-p2">${perOpts}</select>
+    </div>
+    <p class="measure">수업 코드: <b id="ec-code" style="font-size:22px"></b> <span class="muted small">(오늘 · 선택한 반 · 선택한 교시에만 유효)</span></p>
+    <h4>미실시자 개인 코드 (결석·보충용)</h4>
+    <p class="muted small">학번을 "반-번호" 형식으로 쉼표로 나눠 적으세요. 그 학생만 쓸 수 있는 오늘 하루짜리 코드가 나옵니다 (교시 무관 — 보충 시간에 사용).</p>
+    <div class="tool-row"><input id="ec-stu" placeholder="예: 3-21, 5-7" style="flex:1"><button id="ec-stu-btn">코드 만들기</button></div>
+    <div id="ec-stu-list"></div>
+    <h4>교시 시간표</h4>
+    <div id="ec-periods">${per.map(periodRow).join('')}</div>
+    <button id="ec-p-add" class="small-btn">+ 교시 추가</button>
+    <p class="muted small">시간표를 바꿨으면 [설정 저장]을 누르고, 설정 코드로 다른 기기에도 배포하세요.</p>`;
+  const upd = () => {
+    let p1 = +$('ec-p1').value, p2 = +$('ec-p2').value;
+    if (p2 < p1) { p2 = p1; $('ec-p2').value = String(p1); }
+    $('ec-code').textContent = classSessionCode(+$('ec-ban').value, p1, p2);
+  };
+  ['ec-ban', 'ec-p1', 'ec-p2'].forEach(id => $(id).addEventListener('change', upd));
+  upd();
+  $('ec-stu-btn').addEventListener('click', () => {
+    const list = $('ec-stu').value.split(',').map(s => s.trim()).filter(Boolean);
+    $('ec-stu-list').innerHTML = list.map(s => {
+      const m = s.match(/^(\d+)\s*-\s*(\d+)$/);
+      if (!m) return `<div class="warn">"${esc(s)}"은(는) 형식이 아니에요 (예: 3-21)</div>`;
+      return `<div class="adm-work-row">${m[1]}반 ${m[2]}번 → <b>${studentDayCode(+m[1], +m[2])}</b> <span class="muted small">오늘만 유효</span></div>`;
+    }).join('') || '<p class="muted">학번을 입력하세요.</p>';
+  });
+  $('ec-p-add').addEventListener('click', () => {
+    collectPeriods();
+    config.periods.push({ start: '16:00', end: '16:45' });
+    renderEntry();
+  });
+  $('adm-entry').querySelectorAll('.ec-p-del').forEach((b, i) => b.addEventListener('click', () => {
+    collectPeriods(); config.periods.splice(i, 1); renderEntry();
+  }));
 }
 
 // ---- 평가 기준(배점표) 편집 ----
@@ -226,30 +299,65 @@ function summarize(w) {
   return chips.join('');
 }
 
+// 오늘의 출결 표시 (이 기기 저장 + 구글 시트 기록)
+function attKey() { return 'lps_att_' + new Date().toISOString().slice(0, 10); }
+function getAtt() { try { return JSON.parse(localStorage.getItem(attKey()) || '{}'); } catch (e) { return {}; } }
+
 async function loadBanBoard(ban) {
   const grid = document.querySelector(`.board-grid[data-ban="${ban}"]`);
   if (!grid) return;
   try {
     const rows = await cloudListBan(ban);
-    grid.innerHTML = rows.map(r => `
-      <div class="stu-card">
-        <div class="stu-head"><b>${r.num}번</b>
-          <span class="muted small">${new Date(r.updated_at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}</span></div>
-        <div class="stu-chips">${summarize(r.payload || {})}</div>
-        <div class="stu-btns">
-          <button class="w-open" data-id="cloud:${r.id}">보기</button>
-          <button class="w-note" data-bn="${r.ban}:${r.num}">메모</button>
-          <button class="w-del" data-id="cloud:${r.id}">삭제</button>
-        </div>
-      </div>`).join('') || '<p class="muted">아직 없음</p>';
+    const byNum = {};
+    rows.forEach(r => byNum[r.num] = r);
+    const att = getAtt();
+    grid.innerHTML = Array.from({ length: config.numCount }, (_, i) => i + 1).map(num => {
+      const r = byNum[num];
+      const a = att[`${ban}-${num}`];
+      const attHtml = a ? `<div class="att-badge">${esc(a)}</div>` : '';
+      if (!r) return `
+        <div class="stu-card off">
+          <div class="stu-head"><b>${num}번</b><span class="muted small">미접속</span></div>
+          ${attHtml}
+          <div class="stu-btns"><button class="w-att" data-bn="${ban}:${num}">출결</button></div>
+        </div>`;
+      return `
+        <div class="stu-card">
+          <div class="stu-head"><b>${num}번</b>
+            <span class="muted small">${new Date(r.updated_at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}</span></div>
+          ${attHtml}
+          <div class="stu-chips">${summarize(r.payload || {})}</div>
+          <div class="stu-btns">
+            <button class="w-open" data-id="cloud:${r.id}">보기</button>
+            <button class="w-note" data-bn="${ban}:${num}">메모</button>
+            <button class="w-att" data-bn="${ban}:${num}">출결</button>
+            <button class="w-del" data-id="cloud:${r.id}">삭제</button>
+          </div>
+        </div>`;
+    }).join('');
     bindGridButtons(grid);
   } catch (e) {
     grid.innerHTML = `<p class="warn">불러오기 실패: ${esc(e.message)}</p>`;
   }
 }
+function bindAttButtons(scope) {
+  scope.querySelectorAll('.w-att').forEach(b => b.addEventListener('click', () => {
+    const [ban, num] = b.dataset.bn.split(':').map(Number);
+    const cur = getAtt()[`${ban}-${num}`] || '';
+    const text = prompt(`${ban}반 ${num}번 출결 (예: 결석-무단, 지각, 조퇴-병원 / 지우려면 빈칸)`, cur);
+    if (text === null) return;
+    const a = getAtt();
+    if (text.trim()) a[`${ban}-${num}`] = text.trim();
+    else delete a[`${ban}-${num}`];
+    localStorage.setItem(attKey(), JSON.stringify(a));
+    if (text.trim() && config.sheetUrl) { sheetLogFor(ban, num, '출결', text.trim()); sheetFlushNow(); }
+    loadBanBoard(String(ban));
+  }));
+}
 function bindGridButtons(scope) {
   bindOpenButtons(scope);
   bindNoteButtons(scope);
+  bindAttButtons(scope);
   bindDelButtons(scope);
 }
 function bindWorkButtons() {
@@ -298,6 +406,19 @@ function bindDelButtons(scope) {
     renderWorks();
   }));
 }
+
+// 구글 시트 연동용 Apps Script — 학기마다 새 시트에 붙여 쓸 수 있게 관리자 화면에서 제공
+const APPS_SCRIPT = `function doPost(e) {
+  var rows = JSON.parse(e.postData.contents);
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  rows.forEach(function (r) {
+    var name = (r.ban || r.ban === 0) ? r.ban + '반' : '기타';
+    var sh = ss.getSheetByName(name) || ss.insertSheet(name);
+    if (sh.getLastRow() === 0) sh.appendRow(['시각', '번호', '학번', '이벤트', '내용']);
+    sh.appendRow([new Date(r.ts), r.num || '', r.id, r.event, r.detail]);
+  });
+  return ContentService.createTextOutput('ok');
+}`;
 
 // 학생 목록 CSV (엑셀용 BOM 포함)
 async function exportCsv() {
@@ -359,7 +480,8 @@ export function initAdmin() {
     if ($('adm-pin').value !== config.adminPin) { $('adm-pin-err').textContent = 'PIN이 다릅니다.'; return; }
     $('adm-pin-gate').classList.add('hidden');
     $('adm-content').classList.remove('hidden');
-    renderSettings(); renderRubric(); renderFaqEditor(); renderMisses(); renderWorks();
+    renderSettings(); renderEntry(); renderRubric(); renderFaqEditor(); renderMisses(); renderWorks();
+    $('adm-gas').value = APPS_SCRIPT;
     clearInterval(worksTimer);
     worksTimer = setInterval(() => {
       if (!$('admin-modal').classList.contains('hidden')) renderWorks();
@@ -370,8 +492,13 @@ export function initAdmin() {
   $('adm-save').addEventListener('click', () => {
     collectSettings(); collectRubric(); collectFaq();
     saveConfig();
-    renderSettings(); // 오늘의 입장 코드 배너 갱신
+    renderSettings(); renderEntry(); // 코드 배너·시간표 갱신
     alert('저장되었습니다. 학생 화면은 새로고침하면 반영됩니다.');
+  });
+  $('adm-gas-copy').addEventListener('click', () => {
+    $('adm-gas').select();
+    if (navigator.clipboard) navigator.clipboard.writeText(APPS_SCRIPT).catch(() => {});
+    alert('복사했습니다. 새 구글 시트 → 확장 프로그램 → Apps Script에 붙여넣고, 웹 앱으로 배포(액세스: 모든 사용자)한 뒤 그 URL을 수업 설정의 [Google Sheet 기록 URL]에 넣으세요.');
   });
   $('adm-rubric-add').addEventListener('click', () => {
     collectRubric();
