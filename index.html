@@ -88,8 +88,21 @@
   <!-- 회로 탭 -->
   <section id="tab-circuit" class="tab-panel">
     <aside class="panel-left">
-      <h3>회로 만들기 <button class="faq-btn" data-faqtab="circuit">?</button></h3>
-      <p class="muted small">케이스를 펼친 전개도 위에 회로를 만들어요.<br>접는 선(보라 점선)을 넘어 테이프를 이어도 돼요.</p>
+      <h3>회로 <button class="faq-btn" data-faqtab="circuit">?</button></h3>
+      <div id="circ-mode" class="tools">
+        <button data-cm="lab" class="active">회로 실험실</button>
+        <button data-cm="placard">플래카드에 설치</button>
+      </div>
+      <div id="lab-guide" class="props">
+        <b class="small">이렇게 실험해 보세요</b>
+        <p class="small muted">
+        ① LED 1개를 전지에 연결하면?<br>
+        ② 직렬로 2개, 3개… 이으면 밝기는?<br>
+        ③ 병렬로 여러 개 이으면?<br>
+        ④ 전지가 1개(1.5V), 3개(4.5V)라면?<br>
+        ⑤ 저항을 넣으면 무엇이 달라질까?</p>
+      </div>
+      <p id="net-hint" class="muted small" style="display:none">케이스를 펼친 전개도 위에 회로를 만들어요.<br>접는 선(보라 점선)을 넘어 테이프를 이어도 돼요.</p>
       <h3>부품</h3>
       <div id="circuit-tools" class="tools">
         <button data-tool="select" class="active">선택·이동</button>
@@ -117,6 +130,15 @@
       <div id="led-props" class="props" style="display:none">
         <h4>선택한 부품</h4>
         <button id="btn-led-rot">방향 돌리기 (R)</button>
+        <div id="holder-cells" style="display:none">
+          <label class="small">전지 개수 (전압)</label>
+          <div class="cell-btns">
+            <button data-n="1">1개<br><span class="small">1.5V</span></button>
+            <button data-n="2">2개<br><span class="small">3V</span></button>
+            <button data-n="3">3개<br><span class="small">4.5V</span></button>
+            <button data-n="4">4개<br><span class="small">6V</span></button>
+          </div>
+        </div>
         <div id="magic-wrap">
           <p class="small muted">긴 다리(+)가 어느 줄에 닿는지 확인!</p>
           <label class="small">머리 매직 색칠</label>

@@ -63,9 +63,14 @@ export const DEFAULT_CONFIG = {
   showTarget: false,        // 완성 목표 치수 화면 표시 (기본 숨김)
   boardW: 45, boardH: 30,   // 우드락 판 (600×900 판을 4등분 = 450×300mm)
   ledCount: 8, voltage: 3.0, imax: 200,
-  // ponytail: 교육용 근사 회로 모델 — vf는 점등 문턱 전압, rint는 전지·테이프 내부저항.
-  // 직렬 2개 = 어둡게, 3개 이상 = 소등이 되도록 잡은 값. 실제 백색 LED 물리와는 다름.
-  vf: 1.2, rint: 90,
+  // 회로 모델: 백색 LED를 문턱 전압 + 동저항으로 근사 — 현실과 같은 결론이 나온다.
+  // 1.5V→안 켜짐 / 3V 1개→정상(약 20mA) / 3V 직렬2→소등 / 4.5V 직렬2→희미 / 6V 직렬2→정상
+  // 저항 없이 4.5V 이상 직결→과전류(수명 급감)→타버림. I = (Vs − k·Vth) / (Rint + k·Rd + R외부)
+  vf: 2.2,      // LED 문턱 전압 Vth (V)
+  ledRd: 30,    // LED 동저항 (Ω)
+  rint: 10,     // 전지·테이프 내부저항 (Ω)
+  iOver: 25,    // 이보다 크면 과전류 경고 (mA)
+  iBurn: 50,    // 이보다 크면 LED가 타버림 (mA)
   allowResistor: false, resistorOhm: 220,
   frontW: 25, frontH: 10,   // 앞면 종이
   areaW: 23, areaH: 8,      // 도안 작업 영역
@@ -93,7 +98,7 @@ export const DEFAULT_CONFIG = {
   faq: DEFAULT_FAQ,
 };
 
-const CONFIG_KEY = 'lps_config2'; // v2: 회로 모델 파라미터 변경으로 키 교체
+const CONFIG_KEY = 'lps_config3'; // v3: 현실 물리 모델로 교체하며 키 갱신
 const MISS_KEY = 'lps_faq_miss';
 
 export let config = loadConfig();
@@ -179,9 +184,10 @@ export function blankWork() {
     },
     circuit: {
       leds: [], resistors: [], tapes: [],
-      holder: { wires: [{ surf: 'dock' }, { surf: 'dock' }] }, // 전선 끝 2개, dock = 아직 전지에 꽂혀 있음
+      holder: null,
       predictCount: '', tested: false,
     },
+    lab: { leds: [], resistors: [], tapes: [], holder: null, tested: false }, // 회로 실험실 (자유 실험)
     design: {
       letters: [
         { text: '', x: 5.5, y: 5, size: 6, stroke: 0.7 },
