@@ -18,11 +18,13 @@ function drawing() { D().drawing = D().drawing || { strokes: [] }; return D().dr
 function drawLetter(c, scale, o) {
   if (!o.text) return;
   c.save();
-  c.font = `900 ${o.size * scale}px ${FONT}`;
+  // 중간 굵기 글꼴 + 외곽선 보정: 슬라이더 값이 대략 실제 획 굵기(cm)가 되도록.
+  // 기본 글꼴 획 ≈ 0.06 × 글자크기 — 붙어 뭉개지지 않으면서 굵기를 조절할 수 있다.
+  c.font = `500 ${o.size * scale}px ${FONT}`;
   c.textAlign = 'center'; c.textBaseline = 'middle';
   c.fillStyle = '#fff'; c.strokeStyle = '#fff';
-  const extra = Math.max(0, (o.stroke - 0.55)) * scale;
-  if (extra > 0) { c.lineWidth = extra; c.lineJoin = 'round'; c.strokeText(o.text, o.x * scale, o.y * scale); }
+  const extra = Math.max(0, (o.stroke - 0.06 * o.size)) * scale;
+  if (extra > 0.5) { c.lineWidth = extra; c.lineJoin = 'round'; c.strokeText(o.text, o.x * scale, o.y * scale); }
   c.fillText(o.text, o.x * scale, o.y * scale);
   c.restore();
 }
@@ -109,12 +111,14 @@ function analyze() {
 
   // 요소별 실측 bbox: 글자 2개 + 그림(획 전체)
   const boxes = [];
-  const measure = (fn) => {
+  const raster = (fn) => {
     const o2 = document.createElement('canvas');
     o2.width = W; o2.height = H;
     const c2 = o2.getContext('2d', { willReadFrequently: true });
     fn(c2);
-    const d2 = c2.getImageData(0, 0, W, H).data;
+    return c2.getImageData(0, 0, W, H).data;
+  };
+  const measure = (d2) => {
     let minX = W, maxX = 0, minY = H, maxY = 0, any = false;
     for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
       if (d2[(y * W + x) * 4 + 3] > 60) {
@@ -125,10 +129,55 @@ function analyze() {
     }
     return any ? { x: minX / RA, y: minY / RA, w: (maxX - minX) / RA, h: (maxY - minY) / RA } : null;
   };
-  boxes.push(D().letters[0].text ? measure(c2 => drawLetter(c2, RA, D().letters[0])) : null);
-  boxes.push(D().letters[1].text ? measure(c2 => drawLetter(c2, RA, D().letters[1])) : null);
-  boxes.push(drawing().strokes.length ? measure(c2 => drawStrokes(c2, RA, null)) : null);
-  return { cut, island, W, H, islandCount, perimeter, boxes };
+  // 어떤 래스터의 "안쪽 섬" 개수 (획이 붙어 ㅇ·ㅁ 속이 사라졌는지 판단용)
+  const islandsIn = (d2) => {
+    const cut2 = new Uint8Array(W * H);
+    for (let i = 0; i < W * H; i++) cut2[i] = d2[i * 4 + 3] > 60 ? 1 : 0;
+    const seen3 = new Uint8Array(W * H);
+    const st = [];
+    for (let x = 0; x < W; x++) { st.push(x, (H - 1) * W + x); }
+    for (let y = 0; y < H; y++) { st.push(y * W, y * W + W - 1); }
+    while (st.length) {
+      const i = st.pop();
+      if (i < 0 || i >= W * H || seen3[i] || cut2[i]) continue;
+      seen3[i] = 1;
+      const x = i % W;
+      if (x > 0) st.push(i - 1);
+      if (x < W - 1) st.push(i + 1);
+      st.push(i - W, i + W);
+    }
+    let cnt = 0;
+    const seen4 = new Uint8Array(W * H);
+    for (let i0 = 0; i0 < W * H; i0++) {
+      if (!cut2[i0] && !seen3[i0] && !seen4[i0]) {
+        cnt++;
+        const st2 = [i0];
+        while (st2.length) {
+          const i = st2.pop();
+          if (i < 0 || i >= W * H || seen4[i] || cut2[i] || seen3[i]) continue;
+          seen4[i] = 1;
+          const x = i % W;
+          if (x > 0) st2.push(i - 1);
+          if (x < W - 1) st2.push(i + 1);
+          st2.push(i - W, i + W);
+        }
+      }
+    }
+    return cnt;
+  };
+
+  const merged = [false, false];
+  for (let li = 0; li < 2; li++) {
+    const o = D().letters[li];
+    if (!o.text) { boxes.push(null); continue; }
+    const cur = raster(c2 => drawLetter(c2, RA, o));
+    boxes.push(measure(cur));
+    // 가는 획(기본 글꼴)으로 그렸을 때보다 안쪽 공간이 줄었으면 획이 붙은 것
+    const thin = raster(c2 => drawLetter(c2, RA, { ...o, stroke: 0 }));
+    merged[li] = islandsIn(thin) > islandsIn(cur);
+  }
+  boxes.push(drawing().strokes.length ? measure(raster(c2 => drawStrokes(c2, RA, null))) : null);
+  return { cut, island, W, H, islandCount, perimeter, boxes, merged };
 }
 
 // 미리보기 탭용: 빛 통과 마스크 (안쪽 조각은 다시 붙인 상태로 가정)
@@ -220,12 +269,16 @@ function updatePanel() {
     if (Math.max(gx, gy) < 0.5) warns.push(`${names[i]}과(와) ${names[j]} 사이 간격이 0.5cm보다 좁습니다.`);
   }
   if (D().letters.some(l => l.text && l.stroke < config.strokeMin))
-    warns.push(`글자 획 굵기가 ${config.strokeMin}cm보다 가늘면 오리기 어렵고 잘 찢어집니다.`);
+    warns.push(`글자 획 굵기가 조건(${config.strokeMin}cm 이상)보다 가늘어요. 조건을 지키면서 글자를 또렷하게 만들려면, 굵기 대신 글자 크기를 키워 보는 건 어떨까요?`);
   if (drawing().strokes.some(s => s.w < config.strokeMin))
-    warns.push(`그림 선 굵기가 ${config.strokeMin}cm보다 가는 획이 있습니다.`);
-  warns.forEach(w => html += `<p class="warn">${w}</p>`);
+    warns.push(`그림에 조건(${config.strokeMin}cm)보다 가는 선이 있어요. 붓 굵기를 키워 다시 그려 볼까요?`);
+  // 획이 붙어 글자를 알아보기 힘든 경우 — 크기를 키우는 쪽으로 안내 (굵기만 줄이면 조건에 걸린다)
+  a.merged.forEach((m, i) => {
+    if (m) warns.push(`${names[i]}의 획이 서로 붙어 안쪽 공간이 좁아졌어요. 글자 크기를 키우면 같은 굵기여도 훨씬 또렷해집니다.`);
+  });
+  warns.forEach(w => html += `<p class="hint">${w}</p>`);
   if (!warns.length && (D().letters[0].text || D().letters[1].text))
-    html += `<p class="ok">조건 위반 없음. 빛이 어떻게 새어 나올지는 [미리보기] 탭에서 확인하세요.</p>`;
+    html += `<p class="ok">조건에 잘 맞습니다. 빛이 어떻게 새어 나올지는 [미리보기] 탭에서 확인하세요.</p>`;
   el.innerHTML = html;
 }
 

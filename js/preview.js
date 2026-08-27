@@ -34,12 +34,6 @@ export function drawPreview() {
   const px = (W - pw) / 2, py = H * 0.72 - ph;
 
   ctx.save();
-  if (!light.holderStable && light.hasHolder) {
-    ctx.translate(px + pw / 2, H * 0.72);
-    ctx.rotate(-1.35);
-    ctx.translate(-(px + pw / 2), -H * 0.72 + 6);
-  }
-
   ctx.fillStyle = `rgb(${lerp(70, 25, dark)},${lerp(72, 26, dark)},${lerp(78, 30, dark)})`;
   ctx.fillRect(px - 6, py + 4, pw + 12, ph + 2);
   ctx.fillStyle = `rgb(${lerp(38, 10, dark)},${lerp(39, 11, dark)},${lerp(44, 14, dark)})`;
@@ -89,8 +83,49 @@ export function drawPreview() {
   const msgs = [];
   if (!mask.anyCut) msgs.push('도안 탭에서 글자를 만들면 여기에서 완성 모습을 볼 수 있습니다.');
   if (!light.tested) msgs.push('회로 탭에서 점등 테스트를 하면 실제 밝기가 반영됩니다.');
-  if (light.hasHolder && !light.holderStable) msgs.push('플래카드가 넘어졌습니다… 홀더를 어디에 붙이면 잘 설 수 있을까요?');
   $('preview-msg').innerHTML = msgs.map(m => `<p class="hint">${m}</p>`).join('');
+}
+
+// 조립 순서 탭 등에서 재사용: 지정한 사각형에 "불 켜진 앞면"만 그린다
+export function drawLitFront(tctx, px, py, pw, ph, litOverride) {
+  const light = litOverride || getLighting();
+  const mask = getDesignMask();
+  const d = light.dims || getLighting().dims;
+  const depth = (d.sw || 4.5) + config.thickness;
+  tctx.fillStyle = '#101116';
+  tctx.fillRect(px, py, pw, ph);
+  if (!mask.anyCut) return;
+  if (!light.lit.length) {
+    tctx.save(); tctx.globalAlpha = 0.15;
+    tctx.drawImage(mask.canvas, px, py, pw, ph);
+    tctx.restore();
+    return;
+  }
+  const RA = 6;
+  const lw = Math.round(d.bw * RA), lh = Math.round(d.bh * RA);
+  const lc = document.createElement('canvas');
+  lc.width = lw; lc.height = lh;
+  const c2 = lc.getContext('2d');
+  c2.globalCompositeOperation = 'lighter';
+  for (const L of light.lit) {
+    const a = Math.min(1, L.b);
+    const [r, gg, b] = L.rgb;
+    let cx = L.fx * RA, cy = L.fy * RA;
+    const rad = L.face === 'back' ? depth * 1.35 * RA : d.bw * 0.35 * RA;
+    cx = Math.max(0, Math.min(lw, cx)); cy = Math.max(0, Math.min(lh, cy));
+    const grad = c2.createRadialGradient(cx, cy, 1, cx, cy, rad);
+    grad.addColorStop(0, `rgba(${r},${gg},${b},${L.face === 'back' ? a : a * 0.55})`);
+    grad.addColorStop(0.55, `rgba(${r},${gg},${b},${a * 0.25})`);
+    grad.addColorStop(1, 'rgba(0,0,0,0)');
+    c2.fillStyle = grad;
+    c2.fillRect(0, 0, lw, lh);
+  }
+  c2.globalCompositeOperation = 'destination-in';
+  c2.drawImage(mask.canvas, 0, 0, lw, lh);
+  tctx.imageSmoothingEnabled = true;
+  tctx.globalCompositeOperation = 'screen';
+  tctx.drawImage(lc, px, py, pw, ph);
+  tctx.globalCompositeOperation = 'source-over';
 }
 
 export function initPreview() {

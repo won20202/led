@@ -99,11 +99,14 @@
         <button data-tool="tape">전도성 테이프</button>
         <button data-tool="led">LED</button>
         <button data-tool="res" id="tool-res" style="display:none">저항</button>
-        <button data-tool="holder">건전지 홀더</button>
         <button data-tool="erase">지우개</button>
       </div>
+      <p id="tool-fact" class="muted small"></p>
       <p id="tape-hint" class="muted small" style="display:none">클릭으로 점을 찍고,<br>더블클릭·Enter·[테이프 완료]로 끝내요.</p>
       <button id="btn-tape-done" class="small-btn">테이프 완료</button>
+      <div class="tool-row">
+        <button id="btn-3d" class="wide-btn">입체로 보기</button>
+      </div>
       <div class="tool-row">
         <label class="small">확대</label>
         <button id="zoom-out" class="small-btn">−</button>
@@ -124,11 +127,6 @@
             <button data-c="black" style="background:#555;color:#fff">검정</button>
           </div>
         </div>
-      </div>
-      <div id="holder-props" class="props" style="display:none">
-        <h4>건전지 홀더</h4>
-        <button id="btn-switch-dir">스위치 방향 뒤집기</button>
-        <p class="small muted">빨간 선(+)·검은 선(−) 끝을 드래그해서<br>테이프나 LED 다리에 붙이세요.</p>
       </div>
       <div id="circuit-predict-row" class="predict-box">
         <label>몇 개가 켜질까요?</label>
@@ -186,14 +184,21 @@
       <h3>작업 카드 <button class="faq-btn" data-faqtab="order">?</button></h3>
       <div id="order-pool"></div>
     </aside>
-    <div class="panel-center scrollable">
-      <h3>내가 정한 순서</h3>
-      <div id="order-seq"></div>
-      <div class="tool-row">
-        <button id="btn-order-run" class="primary" disabled>순서대로 실행</button>
-        <button id="btn-order-reset">처음부터</button>
+    <div class="panel-center scrollable order-center">
+      <div class="order-left">
+        <h3>내가 정한 순서</h3>
+        <div id="order-seq"></div>
+        <div class="tool-row">
+          <button id="btn-order-run" class="primary" disabled>순서대로 실행</button>
+          <button id="btn-order-reset">처음부터</button>
+          <button id="btn-holder-again" class="hidden">홀더 위치만 다시 정하기</button>
+        </div>
+        <div id="order-result"></div>
       </div>
-      <div id="order-result"></div>
+      <div class="order-right">
+        <canvas id="order-canvas" width="540" height="330"></canvas>
+        <div id="order-tip"></div>
+      </div>
     </div>
   </section>
 
@@ -213,6 +218,7 @@
     <button id="faq-close" class="close-x">✕</button>
     <h2>도움말</h2>
     <details id="faq-rubric-box"><summary>평가 기준 보기</summary><div id="faq-rubric"></div></details>
+    <details id="faq-mat-box"><summary>재료·도구 카드</summary><div id="faq-materials" class="mat-grid"></div></details>
     <input id="faq-search" placeholder="궁금한 것을 검색해 보세요 (예: 배점, 크기, LED)">
     <div id="faq-list"></div>
   </div>
