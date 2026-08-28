@@ -158,7 +158,7 @@ function renderEntry() {
   const wk = entryWeekKey();
   const tt = isBase ? (config.timetable || {}) : timetableForWeek(wk);
   const hasOverride = !isBase && !!(config.weekOverrides || {})[wk];
-  const wkEnd = (() => { const d = new Date(wk); d.setDate(d.getDate() + 5); return `${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; })();
+  const wkEnd = (() => { const d = new Date(wk); d.setDate(d.getDate() + 4); return `${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; })(); // 월~금
   const wkLabel = `${wk.slice(5)}~${wkEnd}` + (entrySel.off === 0 ? ' (이번 주)' : entrySel.off === 1 ? ' (다음 주)' : '');
 
   $('adm-entry').innerHTML = `
