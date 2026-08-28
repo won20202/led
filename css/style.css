@@ -152,8 +152,14 @@ h4 { font-size: 13px; margin: 12px 0 6px; color: #4a5561; }
 .adm-table td, .adm-table th { border: 1px solid #e3e8ee; padding: 5px 8px; font-size: 13px; }
 .adm-work-row { padding: 5px 0; border-bottom: 1px dashed #eef1f5; }
 #adm-code { width: 100%; font-size: 11px; font-family: monospace; }
-.adm-tabs details { margin: 10px 0; border: 1px solid #e3e8ee; border-radius: 10px; padding: 10px; }
-.adm-tabs summary { font-weight: 700; cursor: pointer; }
+#adm-tabs { display: flex; gap: 4px; flex-wrap: wrap; border-bottom: 1px solid var(--line); padding-bottom: 8px; margin: 10px 0; }
+#adm-tabs button { border: none; background: transparent; border-radius: 999px; padding: 7px 14px; font-weight: 600; color: #5a6474; }
+#adm-tabs button:hover { background: #eef1fb; }
+#adm-tabs button.active { background: var(--accent); color: #fff; }
+.adm-panel { display: none; }
+.adm-panel.active { display: block; }
+.adm-ban { margin: 8px 0; border: 1px solid var(--line); border-radius: 10px; padding: 8px; }
+.adm-ban summary { font-weight: 700; cursor: pointer; }
 
 /* 표식·기타 */
 .dot { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; }
@@ -214,6 +220,12 @@ button.link:hover { color: #4a5561; background: transparent; }
 .chip.on { background: #e3f5e9; color: #1e8e4e; font-weight: 600; }
 .stu-btns button { font-size: 11px; padding: 3px 7px; }
 .stu-card.off { background: #f2f3f6; opacity: 0.85; }
+.stu-thumb { width: 100%; border-radius: 6px; margin: 6px 0 2px; display: block; }
+.live-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin: 0 3px 0 6px; }
+.live-dot.on { background: #2ecc71; box-shadow: 0 0 0 3px rgba(46,204,113,0.25); }
+.live-dot.recent { background: #f0b429; }
+.tt-table input { width: 100%; border: none; text-align: center; padding: 3px; background: transparent; }
+.tt-table td { padding: 2px 4px; }
 .att-badge { display: inline-block; font-size: 11px; background: #fde8e6; color: #b03a2e; border-radius: 6px; padding: 2px 7px; margin: 4px 0; font-weight: 600; }
 .ec-p-row span { width: 44px; }
 

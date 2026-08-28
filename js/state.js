@@ -87,6 +87,9 @@ export const DEFAULT_CONFIG = {
   // 입장 방식: none(코드 없음) | fixed(고정 코드) | daily(매일 바뀜) | session(수업 코드: 반·교시 지정)
   entryMode: 'none',
   classCode: '',            // fixed 모드에서 쓰는 고정 코드
+  // 주간 시간표: 요일(1=월~5=금)별 교시 칸에 반 번호. 관리자 화면에서 편집 —
+  // 등록하면 "오늘의 수업 코드"가 자동으로 나온다. 수업 변경 시엔 수동 생성기 사용.
+  timetable: { 1: [], 2: [], 3: [], 4: [], 5: [] },
   periods: [                // 교시 시간표 (session 모드용, 관리자가 수정)
     { start: '09:00', end: '09:45' }, { start: '09:55', end: '10:40' },
     { start: '10:50', end: '11:35' }, { start: '11:45', end: '12:30' },

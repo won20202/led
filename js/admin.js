@@ -84,6 +84,7 @@ function collectSettings() {
     else config[k] = el.value;
   });
   collectPeriods();
+  collectTimetable();
   saveConfig();
 }
 
@@ -101,26 +102,76 @@ function collectPeriods() {
       end: r.querySelector('.ec-pe').value || '09:45',
     }));
 }
+function collectTimetable() {
+  const cells = [...document.querySelectorAll('#adm-entry .tt-cell')];
+  if (!cells.length) return;
+  const tt = { 1: [], 2: [], 3: [], 4: [], 5: [] };
+  cells.forEach(el => {
+    const d = +el.dataset.d, p = +el.dataset.p;
+    tt[d][p] = el.value.trim();
+  });
+  config.timetable = tt;
+}
+// 오늘 요일의 시간표에서 연속된 같은 반을 묶는다 → [{ban, p1, p2}]
+function todayRuns() {
+  const dow = new Date().getDay();
+  if (dow < 1 || dow > 5 || !config.timetable) return [];
+  const col = config.timetable[dow] || [];
+  const runs = [];
+  for (let p = 0; p < (config.periods || []).length; p++) {
+    const ban = parseInt(col[p]);
+    if (!ban) continue;
+    const last = runs[runs.length - 1];
+    if (last && last.ban === ban && last.p2 === p - 1) last.p2 = p;
+    else runs.push({ ban, p1: p, p2: p });
+  }
+  return runs;
+}
+
 function renderEntry() {
   const per = config.periods || [];
   const banOpts = Array.from({ length: config.banCount }, (_, i) => `<option value="${i + 1}">${i + 1}반</option>`).join('');
   const perOpts = per.map((p, i) => `<option value="${i}">${i + 1}교시 (${p.start}~${p.end})</option>`).join('');
+  const days = ['', '월', '화', '수', '목', '금'];
+  const tt = config.timetable || { 1: [], 2: [], 3: [], 4: [], 5: [] };
+  const dow = new Date().getDay();
+
+  // 오늘의 수업 코드 (주간 시간표 기반 자동)
+  const runs = todayRuns();
+  const todayHtml = runs.length
+    ? `<div class="measure">오늘(${days[dow] || '주말'}) 반별 수업 코드 — 반마다 코드가 다릅니다. 해당 반 칠판에 적어 주세요<br>` +
+      runs.map((r, i) =>
+        `<div class="tool-row">${r.p1 + 1}${r.p2 > r.p1 ? '~' + (r.p2 + 1) : ''}교시 <b>${r.ban}반</b> →
+         <b style="font-size:20px">${classSessionCode(r.ban, r.p1, r.p2)}</b>
+         <button class="ec-log small-btn" data-i="${i}">시트에 수업 기록</button></div>`).join('') + '</div>'
+    : `<p class="muted small">주간 시간표를 채우면 요일에 맞춰 오늘의 수업 코드가 자동으로 나옵니다.</p>`;
+
   $('adm-entry').innerHTML = `
-    <h4>수업 코드 만들기</h4>
-    <p class="muted small">반과 교시를 고르면 오늘의 수업 코드가 나옵니다. 그 반 학생만, 그 교시 시간(앞뒤 10분 여유)에만 입장할 수 있고 날마다 바뀝니다. 수업이 변경되면 여기서 다시 골라 새 코드를 칠판에 적어 주면 됩니다.</p>
+    <h4>오늘의 수업 코드</h4>
+    ${todayHtml}
+    <h4>수동 생성 (수업 변경·보강 시)</h4>
     <div class="tool-row">
       <select id="ec-ban">${banOpts}</select>
       <select id="ec-p1">${perOpts}</select> ~ <select id="ec-p2">${perOpts}</select>
+      <span>→ 코드 <b id="ec-code" style="font-size:20px"></b></span>
+      <button id="ec-log-manual" class="small-btn">시트에 수업 기록</button>
     </div>
-    <p class="measure">수업 코드: <b id="ec-code" style="font-size:22px"></b> <span class="muted small">(오늘 · 선택한 반 · 선택한 교시에만 유효)</span></p>
+    <p class="muted small">코드는 그 반 학생만, 그 교시 시간(앞뒤 10분 여유)에만 쓸 수 있고 날마다 바뀝니다.</p>
     <h4>미실시자 개인 코드 (결석·보충용)</h4>
-    <p class="muted small">학번을 "반-번호" 형식으로 쉼표로 나눠 적으세요. 그 학생만 쓸 수 있는 오늘 하루짜리 코드가 나옵니다 (교시 무관 — 보충 시간에 사용).</p>
-    <div class="tool-row"><input id="ec-stu" placeholder="예: 3-21, 5-7" style="flex:1"><button id="ec-stu-btn">코드 만들기</button></div>
+    <p class="muted small">학번을 쉼표로 나눠 적으세요 (예: ${makeSid(3, 21)}, ${makeSid(5, 7)}). 그 학생만 쓸 수 있는 오늘 하루짜리 코드가 나옵니다 (교시 무관).</p>
+    <div class="tool-row"><input id="ec-stu" placeholder="예: ${makeSid(3, 21)}, ${makeSid(5, 7)}" style="flex:1"><button id="ec-stu-btn">코드 만들기</button></div>
     <div id="ec-stu-list"></div>
-    <h4>교시 시간표</h4>
+    <h4>주간 시간표 (칸에 반 번호 입력, 비우면 수업 없음)</h4>
+    <table class="adm-table tt-table"><tr><th>교시</th>${[1, 2, 3, 4, 5].map(d => `<th>${days[d]}</th>`).join('')}</tr>
+      ${per.map((p, pi) => `<tr><td>${pi + 1} (${p.start})</td>` +
+        [1, 2, 3, 4, 5].map(d =>
+          `<td><input class="tt-cell" data-d="${d}" data-p="${pi}" value="${esc((tt[d] || [])[pi] || '')}" placeholder="-"></td>`).join('') + '</tr>').join('')}
+    </table>
+    <h4>교시 시간</h4>
     <div id="ec-periods">${per.map(periodRow).join('')}</div>
     <button id="ec-p-add" class="small-btn">+ 교시 추가</button>
     <p class="muted small">시간표를 바꿨으면 [설정 저장]을 누르고, 설정 코드로 다른 기기에도 배포하세요.</p>`;
+
   const upd = () => {
     let p1 = +$('ec-p1').value, p2 = +$('ec-p2').value;
     if (p2 < p1) { p2 = p1; $('ec-p2').value = String(p1); }
@@ -128,21 +179,35 @@ function renderEntry() {
   };
   ['ec-ban', 'ec-p1', 'ec-p2'].forEach(id => $(id).addEventListener('change', upd));
   upd();
+
+  // 수업 실시 기록 → 시트에 날짜·반·교시가 남아 "그날 몇 반 수업했는지" 확인용
+  const logLesson = (ban, p1, p2) => {
+    if (!config.sheetUrl) { alert('먼저 수업 설정에 Google Sheet 기록 URL을 넣어 주세요.'); return; }
+    sheetLogFor(ban, 0, '수업 실시', `${ban}반 ${p1 + 1}${p2 > p1 ? '~' + (p2 + 1) : ''}교시`);
+    sheetFlushNow();
+    alert('시트에 기록했습니다.');
+  };
+  $('adm-entry').querySelectorAll('.ec-log').forEach(b => b.addEventListener('click', () => {
+    const r = runs[+b.dataset.i];
+    logLesson(r.ban, r.p1, r.p2);
+  }));
+  $('ec-log-manual').addEventListener('click', () => logLesson(+$('ec-ban').value, +$('ec-p1').value, +$('ec-p2').value));
+
   $('ec-stu-btn').addEventListener('click', () => {
     const list = $('ec-stu').value.split(',').map(s => s.trim()).filter(Boolean);
     $('ec-stu-list').innerHTML = list.map(s => {
-      const m = s.match(/^(\d+)\s*-\s*(\d+)$/);
-      if (!m) return `<div class="warn">"${esc(s)}"은(는) 형식이 아니에요 (예: 3-21)</div>`;
-      return `<div class="adm-work-row">${m[1]}반 ${m[2]}번 → <b>${studentDayCode(+m[1], +m[2])}</b> <span class="muted small">오늘만 유효</span></div>`;
+      const p = parseSid(s);
+      if (!p) return `<div class="warn">"${esc(s)}"은(는) 학번 형식이 아니에요 (예: ${makeSid(3, 21)})</div>`;
+      return `<div class="adm-work-row">${esc(s)} (${p.ban}반 ${p.num}번) → <b>${studentDayCode(p.ban, p.num)}</b> <span class="muted small">오늘만 유효</span></div>`;
     }).join('') || '<p class="muted">학번을 입력하세요.</p>';
   });
   $('ec-p-add').addEventListener('click', () => {
-    collectPeriods();
+    collectPeriods(); collectTimetable();
     config.periods.push({ start: '16:00', end: '16:45' });
     renderEntry();
   });
   $('adm-entry').querySelectorAll('.ec-p-del').forEach((b, i) => b.addEventListener('click', () => {
-    collectPeriods(); config.periods.splice(i, 1); renderEntry();
+    collectPeriods(); collectTimetable(); config.periods.splice(i, 1); renderEntry();
   }));
 }
 
@@ -304,6 +369,67 @@ function summarize(w) {
   return chips.join('');
 }
 
+// 학생 작업 미니 썸네일 — 도안 글자·그림 + 회로(테이프·LED)를 한 장에 (팅커캐드 학생작업 그리드처럼)
+function drawThumb(cnv, w) {
+  const ctx = cnv.getContext('2d');
+  const s = 6; // px per cm
+  const W = cnv.width = 25 * s, H = cnv.height = 10 * s;
+  ctx.fillStyle = '#1a1c22';
+  ctx.fillRect(0, 0, W, H);
+  if (!w) return;
+  const C = w.circuit || {};
+  const usePlacard = (C.tapes || []).length || (C.leds || []).length || C.holder;
+  const L = w.lab || {};
+  const M = usePlacard ? C : L;
+  const scale = usePlacard ? 1 : Math.min(25 / 42, 10 / 20); // 실험실은 축소해서 표시
+  // 도안 (플래카드 앞면)
+  const D = w.design || {};
+  ctx.fillStyle = 'rgba(255,252,235,0.92)';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  (D.letters || []).forEach(l => {
+    if (!l.text) return;
+    ctx.font = `600 ${(l.size || 6) * s}px "Noto Sans KR","Malgun Gothic",sans-serif`;
+    ctx.fillText(l.text, l.x * s, l.y * s);
+  });
+  ctx.strokeStyle = 'rgba(255,252,235,0.92)'; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  ((D.drawing || {}).strokes || []).forEach(st => {
+    ctx.lineWidth = (st.w || 0.8) * s;
+    ctx.beginPath();
+    st.pts.forEach((p, i) => i ? ctx.lineTo(p.x * s, p.y * s) : ctx.moveTo(p.x * s, p.y * s));
+    ctx.stroke();
+  });
+  // 회로 (뒷면 영역만 보이는 만큼)
+  ctx.strokeStyle = 'rgba(150,160,175,0.85)'; ctx.lineWidth = 2;
+  (M.tapes || []).forEach(t => {
+    ctx.beginPath();
+    t.pts.forEach((p, i) => i ? ctx.lineTo(p.x * scale * s, p.y * scale * s) : ctx.moveTo(p.x * scale * s, p.y * scale * s));
+    ctx.stroke();
+  });
+  (M.leds || []).forEach(l => {
+    const x = l.x * scale * s, y = l.y * scale * s;
+    if (M.tested) {
+      const g = ctx.createRadialGradient(x, y, 1, x, y, 9);
+      g.addColorStop(0, 'rgba(255,240,160,0.9)');
+      g.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(x, y, 9, 0, 7); ctx.fill();
+    }
+    ctx.fillStyle = M.tested ? '#ffe98a' : '#c8ccd4';
+    ctx.beginPath(); ctx.arc(x, y, 2.4, 0, 7); ctx.fill();
+  });
+  if (!usePlacard && ((L.tapes || []).length || (L.leds || []).length)) {
+    ctx.fillStyle = 'rgba(255,255,255,0.55)'; ctx.font = '9px sans-serif'; ctx.textAlign = 'left';
+    ctx.fillText('실험실 작업 중', 4, H - 6);
+  }
+}
+// 최근 저장 시각 → 활동 배지
+function activityBadge(updatedAt) {
+  const ageMin = (Date.now() - new Date(updatedAt).getTime()) / 60000;
+  if (ageMin < 2) return '<span class="live-dot on"></span><span class="small" style="color:#1e8e4e">작업 중</span>';
+  if (ageMin < 10) return '<span class="live-dot recent"></span><span class="small muted">방금 전까지</span>';
+  return '';
+}
+
 // 오늘의 출결 표시 (이 기기 저장 + 구글 시트 기록)
 function attKey() { return 'lps_att_' + new Date().toISOString().slice(0, 10); }
 function getAtt() { try { return JSON.parse(localStorage.getItem(attKey()) || '{}'); } catch (e) { return {}; } }
@@ -340,7 +466,9 @@ async function loadBanBoard(ban) {
       return `
         <div class="stu-card">
           <div class="stu-head"><b>${num}번</b>
+            ${activityBadge(r.updated_at)}
             <span class="muted small">${new Date(r.updated_at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}</span></div>
+          <canvas class="stu-thumb" data-num="${num}"></canvas>
           ${attHtml}
           <div class="stu-chips">${summarize(r.payload || {})}</div>
           <div class="stu-btns">
@@ -351,6 +479,11 @@ async function loadBanBoard(ban) {
           </div>
         </div>`;
     }).join('');
+    // 썸네일 렌더 (작업물 미리보기 — 학생 저장 주기에 맞춰 자동 갱신됨)
+    grid.querySelectorAll('.stu-thumb').forEach(cnv => {
+      const row = byNum[+cnv.dataset.num];
+      try { drawThumb(cnv, row && row.payload); } catch (e) { /* 그리기 실패는 무시 */ }
+    });
     bindGridButtons(grid);
   } catch (e) {
     grid.innerHTML = `<p class="warn">불러오기 실패: ${esc(e.message)}</p>`;
@@ -498,6 +631,11 @@ export function initAdmin() {
     $('adm-content').classList.remove('hidden');
     renderSettings(); renderEntry(); renderRubric(); renderFaqEditor(); renderMisses(); renderWorks();
     $('adm-gas').value = APPS_SCRIPT;
+    document.querySelectorAll('#adm-tabs button').forEach(b =>
+      b.addEventListener('click', () => {
+        document.querySelectorAll('#adm-tabs button').forEach(x => x.classList.toggle('active', x === b));
+        document.querySelectorAll('.adm-panel').forEach(p => p.classList.toggle('active', p.id === 'ap-' + b.dataset.at));
+      }));
     clearInterval(worksTimer);
     worksTimer = setInterval(() => {
       if (!$('admin-modal').classList.contains('hidden')) renderWorks();
