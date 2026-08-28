@@ -1,6 +1,7 @@
 // 앱 진입점: 로그인(반·번호) → 탭 화면
 import { config, login, student, onCloudStatus, sheetLog, todayCode,
-         sessionCodeValid, studentDayCode, sidInList, parseSid, makeSid, sidLength } from './state.js';
+         sessionCodeValid, studentDayCode, sidInList, parseSid, makeSid, sidLength,
+         rosterActive, rosterStatus, BLOCKED_STATUS } from './state.js';
 import { initCase, refreshFromWork } from './case3d.js';
 import { initCircuit, refreshCircuit } from './circuit.js';
 import { initDesign, refreshDesign } from './design.js';
@@ -39,15 +40,19 @@ function setupLogin() {
       $('login-err').textContent = '이 학번은 명단에서 제외되어 있어요. 선생님께 문의하세요.';
       return;
     }
-    const isExtra = sidInList(config.extraSids, sid); // 전입생 등 추가 등록 학번
-    if (!isExtra &&
-        (p.grade !== config.grade || p.ban < 1 || p.ban > config.banCount || p.num < 1 || p.num > config.numCount)) {
-      $('login-err').textContent = `학번을 다시 확인해 보세요. (${config.grade}학년 1~${config.banCount}반, 1~${config.numCount}번)`;
-      return;
+    // 명단(학적)이 등록되어 있으면 그것을 기준으로 검사
+    if (rosterActive()) {
+      const st = rosterStatus(sid);
+      if (st && BLOCKED_STATUS.some(b => String(st).includes(b))) {
+        $('login-err').textContent = '이 학번은 지금 명단에서 사용할 수 없어요. 선생님께 문의하세요.';
+        return;
+      }
     }
+    const isExtra = sidInList(config.extraSids, sid) || (rosterActive() && !!rosterStatus(sid));
+    const inBase = p.grade === config.grade && p.ban >= 1 && p.ban <= config.banCount && p.num >= 1 && p.num <= config.numCount;
     const entered = $('login-code').value.trim();
     const ban = p.ban, num = p.num;
-    let codeOk = true, errMsg = '';
+    let codeOk = true, errMsg = '', viaSession = false;
     if (config.entryMode === 'fixed') {
       codeOk = entered === config.classCode;
       errMsg = '반 코드가 다릅니다. 선생님께 확인하세요.';
@@ -55,14 +60,21 @@ function setupLogin() {
       codeOk = entered === todayCode();
       errMsg = '오늘의 입장 코드가 다릅니다. 선생님께 확인하세요.';
     } else if (config.entryMode === 'session') {
-      codeOk = sessionCodeValid(entered, ban) || entered === studentDayCode(ban, num);
-      errMsg = '지금 시간, 우리 반의 입장 코드가 아닙니다. 반과 번호를 맞게 골랐는지, 코드를 바르게 적었는지 확인하세요.';
+      const v = sessionCodeValid(entered, p, sid);
+      viaSession = v.ok;
+      codeOk = v.ok || entered === studentDayCode(sid);
+      errMsg = '지금 시간, 이 수업의 입장 코드가 아닙니다. 학번과 코드를 다시 확인해 보세요.';
     }
     if (!codeOk) { $('login-err').textContent = errMsg; return; }
+    // 명단 밖 학생(다른 학년·그룹 수업 등)은 유효한 수업 코드가 있어야 입장
+    if (!inBase && !isExtra && !viaSession) {
+      $('login-err').textContent = `학번을 다시 확인해 보세요. (기본 명단: ${config.grade}학년 1~${config.banCount}반, 1~${config.numCount}번)`;
+      return;
+    }
     localStorage.setItem('lps_last_sid', sid);
-    login(ban, num);
+    login(ban, num, p.grade);
     sheetLog('접속', '');
-    $('student-badge').textContent = `${config.grade}학년 ${ban}반 ${num}번`;
+    $('student-badge').textContent = `${p.grade}학년 ${ban}반 ${num}번`;
     $('login-modal').classList.add('hidden');
     $('app').classList.remove('hidden');
     document.dispatchEvent(new CustomEvent('work-loaded'));

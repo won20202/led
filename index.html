@@ -290,6 +290,20 @@
         <button data-at="etc">시트 연동·기타</button>
       </nav>
       <div class="adm-panel active" id="ap-works">
+        <details class="adm-ban"><summary>명단(학적)·그룹 관리</summary>
+          <p class="muted small">양식을 내려받아 학번·학적만 채워 업로드하면 학년·반별로 일괄 등록됩니다.
+          학적이 전출/유예/휴학/면제/제적이면 입장이 막히고 보드에 표시됩니다. 명단을 등록하지 않으면 기본 규칙(1~최대 번호)으로 동작합니다.</p>
+          <div class="tool-row">
+            <button id="adm-roster-template">명단 양식(CSV) 내려받기</button>
+            <label class="file-btn">명단 CSV 업로드<input type="file" id="adm-roster-file" accept=".csv,.txt" hidden></label>
+            <button id="adm-roster-clear">명단 비우기</button>
+          </div>
+          <div id="adm-roster-summary"></div>
+          <h4>그룹(섞인 반) 명단 — 메이커반·동아리 등</h4>
+          <p class="muted small">그룹 이름은 시간표의 수업명과 똑같이 적으세요. 등록하면 그 그룹 코드로는 명단의 학생만 입장합니다.</p>
+          <div id="adm-groups"></div>
+          <div class="tool-row"><input id="adm-group-name" placeholder="그룹 이름 (예: 메이커반)"><button id="adm-group-add">+ 그룹 추가</button></div>
+        </details>
         <div class="tool-row">
           <button id="adm-works-reload">지금 새로고침</button>
           <button id="adm-csv">학생 목록 CSV</button>

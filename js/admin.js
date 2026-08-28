@@ -2,7 +2,8 @@
 import { config, saveConfig, exportConfigCode, importConfigCode, getMisses, clearMisses,
          cloudList, cloudListBan, cloudGet, cloudDelete, setReadOnlyWork, DEFAULT_CONFIG, DEFAULT_RUBRIC,
          sheetLogFor, sheetFlushNow, todayCode, classSessionCode, studentDayCode,
-         makeSid, parseSid } from './state.js';
+         makeSid, parseSid, weekKeyOf, timetableForWeek, runsOf, todayRuns,
+         rosterActive, BLOCKED_STATUS } from './state.js';
 
 const $ = id => document.getElementById(id);
 
@@ -102,103 +103,142 @@ function collectPeriods() {
       end: r.querySelector('.ec-pe').value || '09:45',
     }));
 }
+// 시간표 편집 대상: 'base'(기본) 또는 주 시작(월요일) 날짜 키
+let entrySel = { kind: 'week', off: 0 };
+function entryWeekKey() {
+  const d = new Date();
+  d.setDate(d.getDate() + entrySel.off * 7);
+  return weekKeyOf(d);
+}
 function collectTimetable() {
-  const cells = [...document.querySelectorAll('#adm-entry .tt-cell')];
-  if (!cells.length) return;
+  const grid = document.querySelector('#adm-entry .tt-grid');
+  if (!grid) return;
   const tt = { 1: [], 2: [], 3: [], 4: [], 5: [] };
-  cells.forEach(el => {
-    const d = +el.dataset.d, p = +el.dataset.p;
-    tt[d][p] = el.value.trim();
+  grid.querySelectorAll('.tt-cell').forEach(el => {
+    tt[+el.dataset.d][+el.dataset.p] = el.value.trim();
   });
-  config.timetable = tt;
-}
-// 오늘 요일의 시간표에서 연속된 같은 반을 묶는다 → [{ban, p1, p2}]
-function todayRuns() {
-  const dow = new Date().getDay();
-  if (dow < 1 || dow > 5 || !config.timetable) return [];
-  const col = config.timetable[dow] || [];
-  const runs = [];
-  for (let p = 0; p < (config.periods || []).length; p++) {
-    const ban = parseInt(col[p]);
-    if (!ban) continue;
-    const last = runs[runs.length - 1];
-    if (last && last.ban === ban && last.p2 === p - 1) last.p2 = p;
-    else runs.push({ ban, p1: p, p2: p });
+  const target = grid.dataset.target;
+  if (target === 'base') config.timetable = tt;
+  else {
+    config.weekOverrides = config.weekOverrides || {};
+    // 기본과 같으면 수정본을 만들지 않는다
+    if (JSON.stringify(tt) === JSON.stringify(config.timetable)) delete config.weekOverrides[target];
+    else config.weekOverrides[target] = tt;
   }
-  return runs;
 }
+function allTokens() {
+  const set = new Set();
+  const add = tt => Object.values(tt || {}).forEach(col => (col || []).forEach(t => { if (t && String(t).trim()) set.add(String(t).trim()); }));
+  add(config.timetable);
+  Object.values(config.weekOverrides || {}).forEach(add);
+  Object.keys(config.groups || {}).forEach(g => set.add(g));
+  for (let b = 1; b <= config.banCount; b++) set.add(String(b));
+  return [...set];
+}
+function tokenLabel(t) { return /^\d+$/.test(t) ? `${t}반` : t; }
 
 function renderEntry() {
   const per = config.periods || [];
-  const banOpts = Array.from({ length: config.banCount }, (_, i) => `<option value="${i + 1}">${i + 1}반</option>`).join('');
-  const perOpts = per.map((p, i) => `<option value="${i}">${i + 1}교시 (${p.start}~${p.end})</option>`).join('');
   const days = ['', '월', '화', '수', '목', '금'];
-  const tt = config.timetable || { 1: [], 2: [], 3: [], 4: [], 5: [] };
   const dow = new Date().getDay();
+  const perOpts = per.map((p, i) => `<option value="${i}">${i + 1}교시 (${p.start}~${p.end})</option>`).join('');
 
-  // 오늘의 수업 코드 (주간 시간표 기반 자동)
+  // 오늘의 수업 코드 (이번 주 적용 시간표 기준 — 수업마다 코드가 다르다)
   const runs = todayRuns();
   const todayHtml = runs.length
-    ? `<div class="measure">오늘(${days[dow] || '주말'}) 반별 수업 코드 — 반마다 코드가 다릅니다. 해당 반 칠판에 적어 주세요<br>` +
+    ? `<div class="measure">오늘(${days[dow] || '주말'})의 수업별 코드 — 수업마다 코드가 다릅니다. 해당 수업 칠판에 적어 주세요<br>` +
       runs.map((r, i) =>
-        `<div class="tool-row">${r.p1 + 1}${r.p2 > r.p1 ? '~' + (r.p2 + 1) : ''}교시 <b>${r.ban}반</b> →
-         <b style="font-size:20px">${classSessionCode(r.ban, r.p1, r.p2)}</b>
+        `<div class="tool-row">${r.p1 + 1}${r.p2 > r.p1 ? '~' + (r.p2 + 1) : ''}교시 <b>${tokenLabel(r.token)}</b> →
+         <b style="font-size:20px">${classSessionCode(r.token, r.p1, r.p2)}</b>
          <button class="ec-log small-btn" data-i="${i}">시트에 수업 기록</button></div>`).join('') + '</div>'
-    : `<p class="muted small">주간 시간표를 채우면 요일에 맞춰 오늘의 수업 코드가 자동으로 나옵니다.</p>`;
+    : `<p class="muted small">시간표를 채우면 요일에 맞춰 오늘의 수업 코드가 자동으로 나옵니다.</p>`;
+
+  // 시간표(기본 / 주차별) — 주차를 고쳐도 다음 주엔 자동으로 기본으로 돌아간다
+  const isBase = entrySel.kind === 'base';
+  const wk = entryWeekKey();
+  const tt = isBase ? (config.timetable || {}) : timetableForWeek(wk);
+  const hasOverride = !isBase && !!(config.weekOverrides || {})[wk];
+  const wkEnd = (() => { const d = new Date(wk); d.setDate(d.getDate() + 5); return `${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; })();
+  const wkLabel = `${wk.slice(5)}~${wkEnd}` + (entrySel.off === 0 ? ' (이번 주)' : entrySel.off === 1 ? ' (다음 주)' : '');
 
   $('adm-entry').innerHTML = `
     <h4>오늘의 수업 코드</h4>
     ${todayHtml}
     <h4>수동 생성 (수업 변경·보강 시)</h4>
     <div class="tool-row">
-      <select id="ec-ban">${banOpts}</select>
+      <input id="ec-token" list="ec-token-list" placeholder="수업명 (예: 7, 2-7, 메이커반)" style="width:150px">
+      <datalist id="ec-token-list">${allTokens().map(t => `<option value="${esc(t)}">`).join('')}</datalist>
       <select id="ec-p1">${perOpts}</select> ~ <select id="ec-p2">${perOpts}</select>
       <span>→ 코드 <b id="ec-code" style="font-size:20px"></b></span>
       <button id="ec-log-manual" class="small-btn">시트에 수업 기록</button>
     </div>
-    <p class="muted small">코드는 그 반 학생만, 그 교시 시간(앞뒤 10분 여유)에만 쓸 수 있고 날마다 바뀝니다.</p>
+    <p class="muted small">"반"이나 "학년-반" 수업은 그 반 학생만 통과합니다. 그룹 수업명(메이커반 등)은 [학생 관리]에서 그룹 명단을 등록하면 그 명단의 학생만 통과합니다. 그룹 수업 코드는 시간표에 적혀 있어야 동작해요.</p>
     <h4>미실시자 개인 코드 (결석·보충용)</h4>
-    <p class="muted small">학번을 쉼표로 나눠 적으세요 (예: ${makeSid(3, 21)}, ${makeSid(5, 7)}). 그 학생만 쓸 수 있는 오늘 하루짜리 코드가 나옵니다 (교시 무관).</p>
-    <div class="tool-row"><input id="ec-stu" placeholder="예: ${makeSid(3, 21)}, ${makeSid(5, 7)}" style="flex:1"><button id="ec-stu-btn">코드 만들기</button></div>
+    <div class="tool-row"><input id="ec-stu" placeholder="학번을 쉼표로: ${makeSid(3, 21)}, ${makeSid(5, 7)}" style="flex:1"><button id="ec-stu-btn">코드 만들기</button></div>
     <div id="ec-stu-list"></div>
-    <h4>주간 시간표 (칸에 반 번호 입력, 비우면 수업 없음)</h4>
+    <h4>시간표</h4>
+    <div class="tool-row">
+      <button id="ec-w-base" class="${isBase ? 'active' : ''}">기본 시간표</button>
+      <button id="ec-w-prev" ${isBase ? 'disabled' : ''}>◀</button>
+      <button id="ec-w-cur" class="${!isBase ? 'active' : ''}">${isBase ? '주차별 보기' : wkLabel}</button>
+      <button id="ec-w-next" ${isBase ? 'disabled' : ''}>▶</button>
+      ${hasOverride ? '<span class="att-badge">이 주만 수정됨</span><button id="ec-w-reset" class="small-btn">이 주 수정 취소</button>' : (!isBase ? '<span class="muted small">기본 시간표 적용 중 — 칸을 고치면 이 주만 바뀝니다</span>' : '')}
+    </div>
+    <div class="tt-grid" data-target="${isBase ? 'base' : wk}">
     <table class="adm-table tt-table"><tr><th>교시</th>${[1, 2, 3, 4, 5].map(d => `<th>${days[d]}</th>`).join('')}</tr>
       ${per.map((p, pi) => `<tr><td>${pi + 1} (${p.start})</td>` +
         [1, 2, 3, 4, 5].map(d =>
           `<td><input class="tt-cell" data-d="${d}" data-p="${pi}" value="${esc((tt[d] || [])[pi] || '')}" placeholder="-"></td>`).join('') + '</tr>').join('')}
     </table>
+    </div>
+    <p class="muted small">칸에 수업명을 적으세요: 반 번호(7), 학년-반(2-7, 1-8), 또는 그룹 이름(메이커반·동아리A). 비우면 수업 없음.</p>
     <h4>교시 시간</h4>
     <div id="ec-periods">${per.map(periodRow).join('')}</div>
     <button id="ec-p-add" class="small-btn">+ 교시 추가</button>
-    <p class="muted small">시간표를 바꿨으면 [설정 저장]을 누르고, 설정 코드로 다른 기기에도 배포하세요.</p>`;
+    <p class="muted small">바꿨으면 [수업 설정] 탭의 [설정 저장]을 누르고, 설정 코드로 다른 기기에도 배포하세요.</p>`;
 
   const upd = () => {
     let p1 = +$('ec-p1').value, p2 = +$('ec-p2').value;
     if (p2 < p1) { p2 = p1; $('ec-p2').value = String(p1); }
-    $('ec-code').textContent = classSessionCode(+$('ec-ban').value, p1, p2);
+    const tok = $('ec-token').value.trim() || '1';
+    $('ec-code').textContent = classSessionCode(tok, p1, p2);
   };
-  ['ec-ban', 'ec-p1', 'ec-p2'].forEach(id => $(id).addEventListener('change', upd));
+  ['ec-token', 'ec-p1', 'ec-p2'].forEach(id => $(id).addEventListener('input', upd));
   upd();
 
-  // 수업 실시 기록 → 시트에 날짜·반·교시가 남아 "그날 몇 반 수업했는지" 확인용
-  const logLesson = (ban, p1, p2) => {
+  // 주차 이동
+  const goto = (kind, off) => { collectTimetable(); entrySel = { kind, off }; renderEntry(); };
+  $('ec-w-base').addEventListener('click', () => goto('base', 0));
+  $('ec-w-cur').addEventListener('click', () => goto('week', isBase ? 0 : entrySel.off));
+  $('ec-w-prev').addEventListener('click', () => goto('week', entrySel.off - 1));
+  $('ec-w-next').addEventListener('click', () => goto('week', entrySel.off + 1));
+  const resetBtn = $('ec-w-reset');
+  if (resetBtn) resetBtn.addEventListener('click', () => {
+    delete config.weekOverrides[wk];
+    saveConfig();
+    renderEntry();
+  });
+
+  // 수업 실시 기록 → 시트에 날짜·수업·교시가 남아 "그날 어떤 수업을 했는지" 확인용
+  const logLesson = (token, p1, p2) => {
     if (!config.sheetUrl) { alert('먼저 수업 설정에 Google Sheet 기록 URL을 넣어 주세요.'); return; }
-    sheetLogFor(ban, 0, '수업 실시', `${ban}반 ${p1 + 1}${p2 > p1 ? '~' + (p2 + 1) : ''}교시`);
+    const ban = /^\d+$/.test(token) ? +token : token;
+    sheetLogFor(ban, 0, '수업 실시', `${tokenLabel(token)} ${p1 + 1}${p2 > p1 ? '~' + (p2 + 1) : ''}교시`);
     sheetFlushNow();
     alert('시트에 기록했습니다.');
   };
   $('adm-entry').querySelectorAll('.ec-log').forEach(b => b.addEventListener('click', () => {
     const r = runs[+b.dataset.i];
-    logLesson(r.ban, r.p1, r.p2);
+    logLesson(r.token, r.p1, r.p2);
   }));
-  $('ec-log-manual').addEventListener('click', () => logLesson(+$('ec-ban').value, +$('ec-p1').value, +$('ec-p2').value));
+  $('ec-log-manual').addEventListener('click', () => logLesson($('ec-token').value.trim() || '1', +$('ec-p1').value, +$('ec-p2').value));
 
   $('ec-stu-btn').addEventListener('click', () => {
     const list = $('ec-stu').value.split(',').map(s => s.trim()).filter(Boolean);
     $('ec-stu-list').innerHTML = list.map(s => {
       const p = parseSid(s);
       if (!p) return `<div class="warn">"${esc(s)}"은(는) 학번 형식이 아니에요 (예: ${makeSid(3, 21)})</div>`;
-      return `<div class="adm-work-row">${esc(s)} (${p.ban}반 ${p.num}번) → <b>${studentDayCode(p.ban, p.num)}</b> <span class="muted small">오늘만 유효</span></div>`;
+      return `<div class="adm-work-row">${esc(s)} (${p.grade}학년 ${p.ban}반 ${p.num}번) → <b>${studentDayCode(s)}</b> <span class="muted small">오늘만 유효</span></div>`;
     }).join('') || '<p class="muted">학번을 입력하세요.</p>';
   });
   $('ec-p-add').addEventListener('click', () => {
@@ -209,6 +249,74 @@ function renderEntry() {
   $('adm-entry').querySelectorAll('.ec-p-del').forEach((b, i) => b.addEventListener('click', () => {
     collectPeriods(); collectTimetable(); config.periods.splice(i, 1); renderEntry();
   }));
+}
+
+// ---- 명단(학적)·그룹 관리 ----
+function downloadText(name, text) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob(['﻿' + text], { type: 'text/csv' }));
+  a.download = name;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+function rosterTemplate() {
+  const rows = [['학번', '학적(재학/전입/전출/유예/휴학)']];
+  for (let b = 1; b <= config.banCount; b++)
+    for (let n = 1; n <= config.numCount; n++)
+      rows.push([makeSid(b, n), '재학']);
+  downloadText('학생명단_양식.csv', rows.map(r => r.join(',')).join('\r\n'));
+}
+function importRoster(text) {
+  const lines = text.replace(/^﻿/, '').split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  const entries = [];
+  for (const line of lines) {
+    const cols = line.split(/[,\t]/).map(c => c.trim().replace(/^"|"$/g, ''));
+    const p = parseSid(cols[0]);
+    if (!p) continue; // 헤더·빈 줄
+    entries.push({ sid: cols[0], status: cols[1] || '재학', key: `${p.grade}-${p.ban}` });
+  }
+  if (!entries.length) { alert('학번을 읽을 수 없습니다. 양식(학번,학적)을 확인해 주세요.'); return; }
+  // 파일에 들어 있는 학년-반만 교체하고 나머지 반의 명단은 유지 (반별 부분 등록)
+  const touched = new Set(entries.map(e => e.key));
+  const next = {};
+  Object.entries(config.roster || {}).forEach(([sid, st]) => {
+    const p = parseSid(sid);
+    if (!p || !touched.has(`${p.grade}-${p.ban}`)) next[sid] = st;
+  });
+  entries.forEach(e => next[e.sid] = e.status);
+  config.roster = next;
+  saveConfig();
+  renderRosterSummary();
+  alert(`${entries.length}명을 등록했습니다 (${[...touched].join(', ')} 반 교체). 설정 코드로 다른 기기에도 배포하세요.`);
+}
+function renderRosterSummary() {
+  const el = $('adm-roster-summary');
+  const r = config.roster || {};
+  const sids = Object.keys(r);
+  if (!sids.length) { el.innerHTML = '<p class="muted small">등록된 명단 없음 — 기본 규칙으로 동작 중.</p>'; return; }
+  const byStatus = {};
+  sids.forEach(s => { const st = r[s] || '재학'; byStatus[st] = (byStatus[st] || 0) + 1; });
+  el.innerHTML = `<p class="supply">명단 ${sids.length}명 등록됨 — ` +
+    Object.entries(byStatus).map(([st, n]) => `${st} ${n}`).join(' · ') + '</p>';
+}
+function renderGroups() {
+  const g = config.groups || {};
+  $('adm-groups').innerHTML = Object.keys(g).map(name => `
+    <div class="adm-area" data-g="${esc(name)}">
+      <div class="adm-area-head"><b>${esc(name)}</b> <span class="muted small">${g[name].length}명</span>
+        <button class="g-del">삭제</button></div>
+      <textarea class="g-sids" rows="2" placeholder="학번을 쉼표로 (예: ${makeSid(3, 21)}, 10821)">${esc(g[name].join(', '))}</textarea>
+    </div>`).join('') || '<p class="muted small">등록된 그룹 없음</p>';
+  $('adm-groups').querySelectorAll('.adm-area').forEach(div => {
+    const name = div.dataset.g;
+    div.querySelector('.g-del').addEventListener('click', () => {
+      delete config.groups[name]; saveConfig(); renderGroups();
+    });
+    div.querySelector('.g-sids').addEventListener('change', e => {
+      config.groups[name] = e.target.value.split(',').map(s => s.trim()).filter(Boolean);
+      saveConfig();
+    });
+  });
 }
 
 // ---- 평가 기준(배점표) 편집 ----
@@ -442,30 +550,43 @@ async function loadBanBoard(ban) {
     const byNum = {};
     rows.forEach(r => byNum[r.num] = r);
     const att = getAtt();
-    // 명단: 1~최대 번호 + 이 반의 추가 학번(전입생), 제외 학번(전출)은 표시만 바꾼다
+    // 명단: CSV 명단이 있으면 그것대로(학적 표시), 없으면 1~최대 번호 + 추가/제외 학번
     const sidOf = num => makeSid(+ban, num);
     const parseList = s => String(s || '').split(',').map(x => x.trim()).filter(Boolean);
     const excluded = new Set(parseList(config.excludedSids));
-    const extraNums = parseList(config.extraSids)
-      .map(x => parseSid(x))
-      .filter(p => p && p.ban === +ban)
-      .map(p => p.num);
-    const roster = [...new Set([...Array.from({ length: config.numCount }, (_, i) => i + 1), ...extraNums])].sort((a, b) => a - b);
+    let roster, statusOf = {};
+    if (rosterActive()) {
+      roster = [];
+      Object.entries(config.roster).forEach(([sid, st]) => {
+        const q = parseSid(sid);
+        if (q && q.grade === config.grade && q.ban === +ban) { roster.push(q.num); statusOf[q.num] = st; }
+      });
+      roster.sort((a, b) => a - b);
+    } else {
+      const extraNums = parseList(config.extraSids)
+        .map(x => parseSid(x))
+        .filter(p => p && p.ban === +ban)
+        .map(p => p.num);
+      roster = [...new Set([...Array.from({ length: config.numCount }, (_, i) => i + 1), ...extraNums])].sort((a, b) => a - b);
+    }
     grid.innerHTML = roster.map(num => {
-      if (excluded.has(sidOf(num)))
-        return `<div class="stu-card off"><div class="stu-head"><b>${num}번</b><span class="muted small">전출·제외</span></div></div>`;
+      const st = statusOf[num];
+      const blocked = st && BLOCKED_STATUS.some(b => String(st).includes(b));
+      if (excluded.has(sidOf(num)) || blocked)
+        return `<div class="stu-card off"><div class="stu-head"><b>${num}번</b><span class="att-badge">${esc(st || '전출·제외')}</span></div></div>`;
+      const stBadge = st && st !== '재학' ? `<span class="status-badge">${esc(st)}</span>` : '';
       const r = byNum[num];
       const a = att[`${ban}-${num}`];
       const attHtml = a ? `<div class="att-badge">${esc(a)}</div>` : '';
       if (!r) return `
         <div class="stu-card off">
-          <div class="stu-head"><b>${num}번</b><span class="muted small">미접속</span></div>
+          <div class="stu-head"><b>${num}번</b>${stBadge}<span class="muted small">미접속</span></div>
           ${attHtml}
           <div class="stu-btns"><button class="w-att" data-bn="${ban}:${num}">출결</button></div>
         </div>`;
       return `
         <div class="stu-card">
-          <div class="stu-head"><b>${num}번</b>
+          <div class="stu-head"><b>${num}번</b>${stBadge}
             ${activityBadge(r.updated_at)}
             <span class="muted small">${new Date(r.updated_at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}</span></div>
           <canvas class="stu-thumb" data-num="${num}"></canvas>
@@ -630,7 +751,29 @@ export function initAdmin() {
     $('adm-pin-gate').classList.add('hidden');
     $('adm-content').classList.remove('hidden');
     renderSettings(); renderEntry(); renderRubric(); renderFaqEditor(); renderMisses(); renderWorks();
+    renderRosterSummary(); renderGroups();
     $('adm-gas').value = APPS_SCRIPT;
+    $('adm-roster-template').addEventListener('click', rosterTemplate);
+    $('adm-roster-file').addEventListener('change', e => {
+      const f = e.target.files[0];
+      if (!f) return;
+      const rd = new FileReader();
+      rd.onload = () => importRoster(String(rd.result));
+      rd.readAsText(f, 'utf-8');
+      e.target.value = '';
+    });
+    $('adm-roster-clear').addEventListener('click', () => {
+      if (!confirm('등록된 명단을 모두 지울까요? (기본 규칙으로 돌아갑니다)')) return;
+      config.roster = {}; saveConfig(); renderRosterSummary();
+    });
+    $('adm-group-add').addEventListener('click', () => {
+      const name = $('adm-group-name').value.trim();
+      if (!name) return;
+      config.groups = config.groups || {};
+      if (!config.groups[name]) config.groups[name] = [];
+      $('adm-group-name').value = '';
+      saveConfig(); renderGroups();
+    });
     document.querySelectorAll('#adm-tabs button').forEach(b =>
       b.addEventListener('click', () => {
         document.querySelectorAll('#adm-tabs button').forEach(x => x.classList.toggle('active', x === b));

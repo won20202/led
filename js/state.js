@@ -84,12 +84,16 @@ export const DEFAULT_CONFIG = {
   banDigits: 2, numDigits: 2, // 학번 체계: 반·번호 자리수 (예: 20627 = 반 2자리 / 2527 = 반 1자리)
   excludedSids: '',   // 전출 등 명단 제외 학번 (쉼표 구분, 예: 20627, 20315)
   extraSids: '',      // 전입생 등 추가 학번 — 번호 범위 밖이어도 입장 허용
+  roster: {},         // 명단(학적): { "20321": "재학" } — CSV 일괄 등록. 비어 있으면 검사 안 함
+  groups: {},         // 섞인 반(그룹 수업) 명단: { "메이커반": ["10821","20321"] }
   // 입장 방식: none(코드 없음) | fixed(고정 코드) | daily(매일 바뀜) | session(수업 코드: 반·교시 지정)
   entryMode: 'none',
   classCode: '',            // fixed 모드에서 쓰는 고정 코드
-  // 주간 시간표: 요일(1=월~5=금)별 교시 칸에 반 번호. 관리자 화면에서 편집 —
-  // 등록하면 "오늘의 수업 코드"가 자동으로 나온다. 수업 변경 시엔 수동 생성기 사용.
+  // 주간 시간표: 요일(1=월~5=금)별 교시 칸에 수업명. "7", "2-7"(학년-반)뿐 아니라
+  // "메이커반", "동아리A"처럼 학년·반이 섞인 그룹 수업명도 된다.
   timetable: { 1: [], 2: [], 3: [], 4: [], 5: [] },
+  // 특정 주만 시간표가 다를 때: { '2026-09-21'(그 주 월요일): {1:[..],..} }. 다음 주엔 자동으로 기본으로.
+  weekOverrides: {},
   periods: [                // 교시 시간표 (session 모드용, 관리자가 수정)
     { start: '09:00', end: '09:45' }, { start: '09:55', end: '10:40' },
     { start: '10:50', end: '11:35' }, { start: '11:45', end: '12:30' },
@@ -135,6 +139,33 @@ function codeOf(...parts) {
 }
 // 일일 코드 (전체 공용, 그날 하루)
 export function todayCode() { return codeOf('day', dateStr()); }
+
+// ---- 주차별 시간표 ----
+export function weekKeyOf(d = new Date()) {
+  const m = new Date(d);
+  m.setDate(m.getDate() - ((m.getDay() + 6) % 7)); // 그 주 월요일
+  return `${m.getFullYear()}-${String(m.getMonth() + 1).padStart(2, '0')}-${String(m.getDate()).padStart(2, '0')}`;
+}
+export function timetableForWeek(wk) {
+  return (config.weekOverrides && config.weekOverrides[wk]) || config.timetable || { 1: [], 2: [], 3: [], 4: [], 5: [] };
+}
+// 어떤 요일 열에서 연속된 같은 수업명을 묶는다 → [{token, p1, p2}]
+export function runsOf(col) {
+  const runs = [];
+  for (let p = 0; p < (config.periods || []).length; p++) {
+    const token = String((col || [])[p] || '').trim();
+    if (!token) continue;
+    const last = runs[runs.length - 1];
+    if (last && last.token === token && last.p2 === p - 1) last.p2 = p;
+    else runs.push({ token, p1: p, p2: p });
+  }
+  return runs;
+}
+export function todayRuns() {
+  const dow = new Date().getDay();
+  if (dow < 1 || dow > 5) return [];
+  return runsOf(timetableForWeek(weekKeyOf())[dow]);
+}
 // "20627, 20315" 같은 학번 목록에 포함되는지
 export function sidInList(listStr, sid) {
   return String(listStr || '').split(',').map(s => s.trim()).filter(Boolean).includes(sid);
@@ -149,25 +180,54 @@ export function parseSid(sid) {
 export function makeSid(ban, num) {
   return `${config.grade}${String(ban).padStart(config.banDigits, '0')}${String(num).padStart(config.numDigits, '0')}`;
 }
-// 수업 코드: 특정 반 + 교시 범위 (p1, p2는 0부터)
-export function classSessionCode(ban, p1, p2) { return codeOf('ban', dateStr(), ban, p1, p2); }
-// 미실시자 개인 코드: 특정 학생, 그날 하루
-export function studentDayCode(ban, num) { return codeOf('stu', dateStr(), ban, num); }
+// 수업 코드: 수업명(반 번호·"학년-반"·그룹명) + 교시 범위 (p1, p2는 0부터)
+export function classSessionCode(token, p1, p2) { return codeOf('ban', dateStr(), String(token).trim(), p1, p2); }
+// 미실시자 개인 코드: 학번 그대로, 그날 하루
+export function studentDayCode(sid) { return codeOf('stu', dateStr(), String(sid).trim()); }
 const toMin = t => { const [h, m] = String(t).split(':').map(Number); return h * 60 + m; };
-// 학생 기기에서 수업 코드 검증: 자기 반의 모든 교시 조합을 계산해 일치하는 게
-// 있으면, 지금 시각이 그 교시 범위(앞뒤 10분 여유) 안인지 확인한다.
-export function sessionCodeValid(code, ban) {
-  if (!/^\d{4}$/.test(code)) return false;
+function inWindow(p1, p2) {
   const per = config.periods || [];
-  const now = new Date();
-  const mins = now.getHours() * 60 + now.getMinutes();
-  for (let p1 = 0; p1 < per.length; p1++)
-    for (let p2 = p1; p2 < per.length; p2++) {
-      if (classSessionCode(ban, p1, p2) !== code) continue;
-      return mins >= toMin(per[p1].start) - 10 && mins <= toMin(per[p2].end) + 10;
-    }
-  return false;
+  if (!per[p1] || !per[p2]) return false;
+  const mins = new Date().getHours() * 60 + new Date().getMinutes();
+  return mins >= toMin(per[p1].start) - 10 && mins <= toMin(per[p2].end) + 10;
 }
+// 수업명이 이 학생의 수업인지: "학년-반"/"반" 은 학번과 대조,
+// 그룹 수업명은 등록된 그룹 명단과 대조 (명단이 없으면 코드만 맞으면 입장)
+function tokenMatches(token, p, sid) {
+  const t = String(token).trim();
+  const m = t.match(/^(\d+)-(\d+)$/); // "2-7" = 학년-반
+  if (m) return +m[1] === p.grade && +m[2] === p.ban;
+  if (/^\d+$/.test(t)) return p.grade === config.grade && +t === p.ban;
+  const members = (config.groups || {})[t];
+  if (members && members.length) return members.map(s => String(s).trim()).includes(sid);
+  return true;
+}
+// 학생 기기에서 수업 코드 검증 (p = 학번 해석 결과, sid = 학번 문자열)
+// 1) 오늘 시간표의 수업들과 대조 — 그룹 수업까지 처리
+// 2) 시간표에 없어도 자기 반 코드는 통과 (수동 발급 대비)
+export function sessionCodeValid(code, p, sid) {
+  if (!/^\d{4}$/.test(code)) return { ok: false };
+  for (const r of todayRuns()) {
+    if (classSessionCode(r.token, r.p1, r.p2) === code && inWindow(r.p1, r.p2))
+      if (tokenMatches(r.token, p, sid)) return { ok: true, token: r.token };
+  }
+  const per = config.periods || [];
+  const own = [String(p.ban), `${p.grade}-${p.ban}`];
+  for (const token of own)
+    for (let p1 = 0; p1 < per.length; p1++)
+      for (let p2 = p1; p2 < per.length; p2++)
+        if (classSessionCode(token, p1, p2) === code && inWindow(p1, p2))
+          return { ok: true, token };
+  return { ok: false };
+}
+
+// ---- 명단(학적) : { "20321": "재학" } — 비어 있으면 명단 검사 안 함 ----
+export const BLOCKED_STATUS = ['전출', '유예', '휴학', '면제', '제적'];
+export function rosterStatus(sid) {
+  const r = config.roster || {};
+  return r[sid] || null;
+}
+export function rosterActive() { return Object.keys(config.roster || {}).length > 0; }
 
 export function exportConfigCode() {
   return btoa(unescape(encodeURIComponent(JSON.stringify(config))));
@@ -210,8 +270,8 @@ export let student = null;   // {ban, num}
 export let work = blankWork();
 export let readOnly = false; // 관리자가 학생 작업을 열람할 때
 
-export function studentKey(s) { return `lps_work_${s.ban}-${s.num}`; }
-export function studentId(s) { return `${config.grade}-${s.ban}-${s.num}`; }
+export function studentKey(s) { return `lps_work_${s.grade || config.grade}-${s.ban}-${s.num}`; }
+export function studentId(s) { return `${s.grade || config.grade}-${s.ban}-${s.num}`; }
 
 // work 객체는 교체하지 않고 내용만 바꾼다 (모듈들이 참조를 캡처하고 있음)
 function replaceWork(w) {
@@ -219,9 +279,10 @@ function replaceWork(w) {
   Object.assign(work, blankWork(), w || {});
 }
 
-export function login(ban, num) {
-  student = { ban, num };
-  const raw = localStorage.getItem(studentKey(student));
+export function login(ban, num, grade) {
+  student = { grade: grade || config.grade, ban, num };
+  const raw = localStorage.getItem(studentKey(student)) ||
+    (student.grade === config.grade ? localStorage.getItem(`lps_work_${ban}-${num}`) : null); // 옛 키 호환
   let saved = null;
   if (raw) { try { saved = JSON.parse(raw); } catch (e) { /* ignore */ } }
   replaceWork(saved);
@@ -258,15 +319,17 @@ export function addLog(line) {
 let sheetQueue = [], flushTimer = null;
 export function sheetLog(event, detail) {
   if (readOnly || !student) return;
-  sheetLogFor(student.ban, student.num, event, detail);
+  // 다른 학년 학생은 반 탭이 겹치지 않게 "학년-반"으로 구분
+  const banLabel = student.grade === config.grade ? student.ban : `${student.grade}-${student.ban}`;
+  sheetLogFor(banLabel, student.num, event, detail, studentId(student));
 }
 // 관리자(교사 메모 등)용: 로그인 여부와 무관하게 기록
-export function sheetLogFor(ban, num, event, detail) {
+export function sheetLogFor(ban, num, event, detail, id) {
   if (!config.sheetUrl) return;
   sheetQueue.push({
     ts: new Date().toISOString(),
     ban, num,
-    id: `${config.grade}-${ban}-${num}`,
+    id: id || `${config.grade}-${ban}-${num}`,
     event, detail: String(detail || '').slice(0, 500),
   });
   if (!flushTimer) flushTimer = setTimeout(flushSheet, 12000);
