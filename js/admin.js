@@ -20,7 +20,7 @@ const FIELDS = [
   ['targetD', '완성 목표 깊이 (cm)', 'number'],
   ['showTarget', '완성 목표 치수를 학생 화면에 표시', 'checkbox'],
   ['ledCount', 'LED 지급 개수', 'number'],
-  ['allowResistor', '저항 부품 사용 (회로 탭에 저항 도구 표시)', 'checkbox'],
+  ['advanced', '심화 모드 (저항 부품 + 실제 색 LED)', 'checkbox'],
   ['resistorOhm', '저항값 (Ω)', 'number'],
   ['voltage', '전원 전압 (V)', 'number'],
   ['vf', 'LED 점등 문턱 전압 (V) — 직렬 소등 기준', 'number'],

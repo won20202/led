@@ -71,7 +71,8 @@ export const DEFAULT_CONFIG = {
   rint: 10,     // 전지·테이프 내부저항 (Ω)
   iOver: 25,    // 이보다 크면 과전류 경고 (mA)
   iBurn: 50,    // 이보다 크면 LED가 타버림 (mA)
-  allowResistor: false, resistorOhm: 220,
+  advanced: false,     // 심화 모드: 저항 부품 + 실제 색 LED (기본은 백색 LED + 매직 색칠)
+  resistorOhm: 220,
   frontW: 25, frontH: 10,   // 앞면 종이
   areaW: 23, areaH: 8,      // 도안 작업 영역
   strokeMin: 0.7,

@@ -7,6 +7,25 @@ import { renderLogList } from './case3d.js';
 
 const $ = id => document.getElementById(id);
 
+// 실제 색 LED (심화 모드) — 색마다 문턱 전압이 다르다. 빨강·노랑·초록은 3V 직결 시
+// 과전류가 되어 "색 LED는 저항이 필요하다"를 스스로 발견하게 된다.
+export const KINDS = {
+  white: { label: '백색', vth: null, rgb: [255, 250, 230] }, // vth null = 설정값(config.vf) 사용
+  red: { label: '빨강', vth: 1.8, rgb: [255, 95, 95] },
+  yellow: { label: '노랑', vth: 1.9, rgb: [255, 220, 80] },
+  green: { label: '초록', vth: 2.0, rgb: [90, 230, 120] },
+  blue: { label: '파랑', vth: 2.6, rgb: [95, 155, 255] },
+};
+function vthOf(l) { const k = KINDS[l.kind || 'white']; return k.vth ?? config.vf; }
+function rgbOf(l) {
+  if ((l.kind || 'white') !== 'white') return KINDS[l.kind].rgb;
+  return (MAGIC[l.color || 'none'] || MAGIC.none).rgb;
+}
+function fOf(l) {
+  if ((l.kind || 'white') !== 'white') return 1; // 매직 색칠은 백색 LED에만
+  return (MAGIC[l.color || 'none'] || MAGIC.none).f;
+}
+
 export const MAGIC = {
   none: { label: '칠하지 않음', f: 1.0, rgb: [255, 250, 230] },
   yellow: { label: '노랑', f: 0.75, rgb: [255, 230, 90] },
@@ -342,7 +361,8 @@ function solveInner(C, lab) {
   const conducting = [];
   for (const p of paths) {
     const k = p.leds.length;
-    const I = (Vs - k * config.vf) / (config.rint + k * config.ledRd + config.resistorOhm * p.nRes) * 1000;
+    const sumVth = p.leds.reduce((a, i) => a + vthOf(C.leds[i]), 0); // 색 LED는 문턱 전압이 다르다
+    const I = (Vs - sumVth) / (config.rint + k * config.ledRd + config.resistorOhm * p.nRes) * 1000;
     if (I <= 0.2) { if (k >= 2) res.hasBlockedSeries = true; continue; }
     conducting.push({ leds: p.leds, nRes: p.nRes, I });
   }
@@ -354,9 +374,8 @@ function solveInner(C, lab) {
       if (I > config.iBurn) { res.burnt.add(i); continue; } // 과전류로 소손 — 현실에서도 이렇게 된다
       if (I > config.iOver) res.over.add(i);
       if (p.leds.length >= 2 && I < 12) res.dimSeries = true;
-      const f = (MAGIC[C.leds[i].color || 'none'] || MAGIC.none).f;
       const b = Math.min(1.3, I / 20); // 과전류면 정격보다 더 밝게 보인다
-      res.lit[i] = Math.max(res.lit[i] || 0, b * f);
+      res.lit[i] = Math.max(res.lit[i] || 0, b * fOf(C.leds[i]));
       if (p.nRes === 0) res.noResistorLit = true;
     }
   }
@@ -453,7 +472,7 @@ export function drawAssembled(tctx, rx, ry, rw, rh, opts = {}) {
     C.leds.forEach((l, i) => {
       const s = pj(to3Dp(l));
       const b = litSet[i] !== undefined ? litSet[i] : 0;
-      const mag = MAGIC[l.color || 'none'];
+      const mag = { rgb: rgbOf(l) };
       if (lit && b > 0.02) {
         const halo = 8 + 26 * b;
         const g = tctx.createRadialGradient(s[0], s[1], 1, s[0], s[1], halo);
@@ -610,7 +629,7 @@ function draw() {
     const g = legs(l);
     const lit = R && R.lit[i] !== undefined ? R.lit[i] : 0;
     const burnt = R && R.burnt && R.burnt.has(i) && C.tested;
-    const mag = MAGIC[l.color || 'none'];
+    const mag = { rgb: rgbOf(l) };
     ctx.lineWidth = 2; ctx.strokeStyle = litMode ? '#b9bfc8' : '#8d939c';
     ctx.beginPath(); ctx.moveTo(l.x * Z, l.y * Z); ctx.lineTo(g.a.x * Z, g.a.y * Z); ctx.stroke();
     ctx.beginPath(); ctx.moveTo(l.x * Z, l.y * Z); ctx.lineTo(g.k.x * Z, g.k.y * Z); ctx.stroke();
@@ -641,7 +660,8 @@ function draw() {
     ctx.beginPath(); ctx.arc(l.x * Z, l.y * Z, 0.35 * Z, 0, 7);
     ctx.fillStyle = lit > 0.02
       ? `rgb(${Math.min(255, mag.rgb[0] + 60 * lit)},${Math.min(255, mag.rgb[1] + 60 * lit)},${Math.min(255, mag.rgb[2] + 60 * lit)})`
-      : (l.color && l.color !== 'none' ? `rgba(${mag.rgb[0]},${mag.rgb[1]},${mag.rgb[2]},0.45)` : '#e8e8e2');
+      : (((l.kind && l.kind !== 'white') || (l.color && l.color !== 'none'))
+        ? `rgba(${mag.rgb[0]},${mag.rgb[1]},${mag.rgb[2]},0.45)` : '#e8e8e2');
     ctx.fill();
     ctx.strokeStyle = selected && selected.type === 'led' && selected.i === i ? '#2b6cb0' : (lit > 0.02 ? '#fff' : '#767c85');
     ctx.lineWidth = selected && selected.type === 'led' && selected.i === i ? 2.5 : 1.5;
@@ -772,7 +792,7 @@ export function getLighting() {
   geomLab = false; // 플래카드 전개도 기준으로 면을 판정
   for (const [iStr, b] of Object.entries(litSet)) {
     const l = C.leds[+iStr];
-    const mag = MAGIC[l.color || 'none'];
+    const mag = { rgb: rgbOf(l) };
     const k = faceOf(l) || 'back';
     let face = 'back', fx = l.x, fy = l.y;
     if (k === 'top') { face = 'top'; fy = 0; }
@@ -1085,6 +1105,17 @@ export function initCircuit() {
   $('btn-undo').addEventListener('click', doUndo);
   document.querySelectorAll('#circ-mode button').forEach(b =>
     b.addEventListener('click', () => setCircuitMode(b.dataset.cm)));
+  // LED 종류 선택 (심화 모드)
+  document.querySelectorAll('#led-kind button').forEach(b =>
+    b.addEventListener('click', () => {
+      if (!selected || selected.type !== 'led' || readOnly) return;
+      pushUndo();
+      const l = am().leds[selected.i];
+      l.kind = b.dataset.k;
+      if (l.kind !== 'white') l.color = 'none'; // 매직 색칠은 백색 전용
+      am().tested = false;
+      afterChange();
+    }));
   // 전지 개수 선택 (실험실에서 홀더 선택 시)
   document.querySelectorAll('#holder-cells button').forEach(b =>
     b.addEventListener('click', () => {
@@ -1130,7 +1161,12 @@ function updateSelPanel() {
   const led = selected && selected.type === 'led';
   const rot = selected && (selected.type === 'led' || selected.type === 'res' || selected.type === 'holder');
   $('led-props').style.display = rot ? '' : 'none';
-  $('magic-wrap').style.display = led ? '' : 'none';
+  // LED 종류(심화)와 매직 색칠(백색 전용)
+  const kind = led ? (am().leds[selected.i].kind || 'white') : 'white';
+  $('led-kind').style.display = led && config.advanced ? '' : 'none';
+  if (led && config.advanced)
+    document.querySelectorAll('#led-kind button').forEach(b => b.classList.toggle('active', b.dataset.k === kind));
+  $('magic-wrap').style.display = led && kind === 'white' ? '' : 'none';
   // 실험실에서 홀더를 선택하면 전지 개수(전압) 선택 표시
   const holderSel = selected && selected.type === 'holder' && mode === 'lab' && am().holder;
   $('holder-cells').style.display = holderSel ? '' : 'none';
@@ -1151,6 +1187,7 @@ export function refreshCircuit() {
   const P = work.circuit;
   const hasPlacard = P.tapes.length || P.leds.length || P.holder;
   $('in-predict-led').value = work.circuit.predictCount ?? '';
-  $('tool-res').style.display = config.allowResistor ? '' : 'none';
+  $('tool-res').style.display = config.advanced ? '' : 'none';
+  $('guide-adv').style.display = config.advanced ? '' : 'none';
   setCircuitMode(hasPlacard ? 'placard' : 'lab');
 }
