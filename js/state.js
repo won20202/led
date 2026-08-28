@@ -261,6 +261,8 @@ export function blankWork() {
     },
     order: [],
     assembly: { holderPos: null }, // 조립 순서 탭에서 정하는 건전지 홀더 부착 위치
+    activeTab: 'case',            // 지금 보고 있는 탭 — 교사 실시간 보드가 이 장면을 보여준다
+    circuitMode: 'lab',           // 회로 탭 안에서 실험실/플래카드 중 어디인지
     log: [],
     updatedAt: 0,
   };
@@ -385,7 +387,7 @@ export function cloudPush() {
   const c = sb();
   if (!c || !student || readOnly) return;
   const now = Date.now();
-  const delay = Math.max(0, 15000 - (now - lastPush)); // 최소 15초 간격
+  const delay = Math.max(0, 5000 - (now - lastPush)); // 최소 5초 간격 — 교사 관찰이 준실시간이 되도록
   clearTimeout(pushTimer);
   pushTimer = setTimeout(async () => {
     lastPush = Date.now();

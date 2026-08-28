@@ -220,7 +220,8 @@ button.link:hover { color: #4a5561; background: transparent; }
 .chip.on { background: #e3f5e9; color: #1e8e4e; font-weight: 600; }
 .stu-btns button { font-size: 11px; padding: 3px 7px; }
 .stu-card.off { background: #f2f3f6; opacity: 0.85; }
-.stu-thumb { width: 100%; border-radius: 6px; margin: 6px 0 2px; display: block; }
+.stu-thumb { width: 100%; border-radius: 6px; margin: 6px 0 2px; display: block; cursor: zoom-in; }
+.tab-badge { display: inline-block; font-size: 10px; background: #eef1fb; color: #3a58d6; border-radius: 6px; padding: 1px 6px; margin-left: 4px; font-weight: 600; }
 .live-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin: 0 3px 0 6px; }
 .live-dot.on { background: #2ecc71; box-shadow: 0 0 0 3px rgba(46,204,113,0.25); }
 .live-dot.recent { background: #f0b429; }

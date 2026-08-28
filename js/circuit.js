@@ -894,6 +894,7 @@ function updateSwitchButton() {
 // 실험실 ↔ 플래카드 전환
 function setCircuitMode(m) {
   mode = m;
+  if (!readOnly) { work.circuitMode = m; touch(); } // 교사 보드용
   drawingTape = null; selected = null; dragOff = null;
   undoStack = []; updateUndoBtn();
   if (view3d) { view3d = false; $('btn-3d').classList.remove('active'); $('btn-3d').textContent = '입체로 보기'; }

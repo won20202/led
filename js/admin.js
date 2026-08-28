@@ -477,58 +477,124 @@ function summarize(w) {
   return chips.join('');
 }
 
-// 학생 작업 미니 썸네일 — 도안 글자·그림 + 회로(테이프·LED)를 한 장에 (팅커캐드 학생작업 그리드처럼)
-function drawThumb(cnv, w) {
-  const ctx = cnv.getContext('2d');
-  const s = 6; // px per cm
-  const W = cnv.width = 25 * s, H = cnv.height = 10 * s;
-  ctx.fillStyle = '#1a1c22';
-  ctx.fillRect(0, 0, W, H);
-  if (!w) return;
-  const C = w.circuit || {};
-  const usePlacard = (C.tapes || []).length || (C.leds || []).length || C.holder;
-  const L = w.lab || {};
-  const M = usePlacard ? C : L;
-  const scale = usePlacard ? 1 : Math.min(25 / 42, 10 / 20); // 실험실은 축소해서 표시
-  // 도안 (플래카드 앞면)
+// 학생 작업 미니 썸네일 — 학생이 "지금 보고 있는 탭"의 장면을 그대로 보여준다
+export const TAB_NAMES = { case: '케이스', circuit: '회로', design: '도안', order: '조립 순서', preview: '미리보기' };
+
+function thumbLetters(ctx, w, s, alpha) {
   const D = w.design || {};
-  ctx.fillStyle = 'rgba(255,252,235,0.92)';
+  ctx.fillStyle = `rgba(255,252,235,${alpha})`;
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   (D.letters || []).forEach(l => {
     if (!l.text) return;
     ctx.font = `600 ${(l.size || 6) * s}px "Noto Sans KR","Malgun Gothic",sans-serif`;
     ctx.fillText(l.text, l.x * s, l.y * s);
   });
-  ctx.strokeStyle = 'rgba(255,252,235,0.92)'; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  ctx.strokeStyle = `rgba(255,252,235,${alpha})`; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
   ((D.drawing || {}).strokes || []).forEach(st => {
     ctx.lineWidth = (st.w || 0.8) * s;
     ctx.beginPath();
     st.pts.forEach((p, i) => i ? ctx.lineTo(p.x * s, p.y * s) : ctx.moveTo(p.x * s, p.y * s));
     ctx.stroke();
   });
-  // 회로 (뒷면 영역만 보이는 만큼)
-  ctx.strokeStyle = 'rgba(150,160,175,0.85)'; ctx.lineWidth = 2;
+}
+function thumbCircuit(ctx, M, s, scale, ox, oy) {
+  ctx.strokeStyle = 'rgba(130,140,155,0.9)'; ctx.lineWidth = 2;
   (M.tapes || []).forEach(t => {
     ctx.beginPath();
-    t.pts.forEach((p, i) => i ? ctx.lineTo(p.x * scale * s, p.y * scale * s) : ctx.moveTo(p.x * scale * s, p.y * scale * s));
+    t.pts.forEach((p, i) => i
+      ? ctx.lineTo(ox + p.x * scale * s, oy + p.y * scale * s)
+      : ctx.moveTo(ox + p.x * scale * s, oy + p.y * scale * s));
     ctx.stroke();
   });
-  (M.leds || []).forEach(l => {
-    const x = l.x * scale * s, y = l.y * scale * s;
-    if (M.tested) {
-      const g = ctx.createRadialGradient(x, y, 1, x, y, 9);
-      g.addColorStop(0, 'rgba(255,240,160,0.9)');
-      g.addColorStop(1, 'rgba(0,0,0,0)');
-      ctx.fillStyle = g;
-      ctx.beginPath(); ctx.arc(x, y, 9, 0, 7); ctx.fill();
-    }
-    ctx.fillStyle = M.tested ? '#ffe98a' : '#c8ccd4';
-    ctx.beginPath(); ctx.arc(x, y, 2.4, 0, 7); ctx.fill();
-  });
-  if (!usePlacard && ((L.tapes || []).length || (L.leds || []).length)) {
-    ctx.fillStyle = 'rgba(255,255,255,0.55)'; ctx.font = '9px sans-serif'; ctx.textAlign = 'left';
-    ctx.fillText('실험실 작업 중', 4, H - 6);
+  if (M.holder && M.holder.x !== undefined) {
+    ctx.fillStyle = '#3b4552';
+    ctx.fillRect(ox + (M.holder.x - 2.75) * scale * s, oy + (M.holder.y - 1.25) * scale * s, 5.5 * scale * s, 2.5 * scale * s);
   }
+  (M.leds || []).forEach(l => {
+    const x = ox + l.x * scale * s, y = oy + l.y * scale * s;
+    if (M.tested) {
+      const g = ctx.createRadialGradient(x, y, 1, x, y, 8);
+      g.addColorStop(0, 'rgba(255,225,120,0.95)');
+      g.addColorStop(1, 'rgba(255,225,120,0)');
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(x, y, 8, 0, 7); ctx.fill();
+    }
+    ctx.fillStyle = M.tested ? '#f5b942' : '#aab2bd';
+    ctx.beginPath(); ctx.arc(x, y, 2.2, 0, 7); ctx.fill();
+  });
+}
+export function drawThumb(cnv, w) {
+  const ctx = cnv.getContext('2d');
+  const s = 6; // px per cm (앞면 25×10 기준)
+  const W = cnv.width = 25 * s, H = cnv.height = 10 * s;
+  ctx.fillStyle = '#eef1f6';
+  ctx.fillRect(0, 0, W, H);
+  if (!w) return;
+  const tab = w.activeTab || 'case';
+  const num = v => { const x = parseFloat(v); return isFinite(x) && x > 0 ? x : null; };
+
+  if (tab === 'design' || tab === 'preview') {
+    // 검은 앞면 (미리보기는 점등된 모습 느낌으로)
+    ctx.fillStyle = tab === 'preview' ? '#0d0f14' : '#1a1c22';
+    ctx.fillRect(0, 0, W, H);
+    thumbLetters(ctx, w, s, tab === 'preview' ? 0.95 : 0.85);
+    if (tab === 'preview') {
+      const C = w.circuit || {};
+      if (C.tested) (C.leds || []).forEach(l => {
+        const x = Math.max(0, Math.min(W, l.x * s)), y = Math.max(0, Math.min(H, l.y * s));
+        const g = ctx.createRadialGradient(x, y, 1, x, y, 14);
+        g.addColorStop(0, 'rgba(255,235,150,0.5)');
+        g.addColorStop(1, 'rgba(255,235,150,0)');
+        ctx.fillStyle = g;
+        ctx.beginPath(); ctx.arc(x, y, 14, 0, 7); ctx.fill();
+      });
+    }
+    return;
+  }
+  if (tab === 'circuit') {
+    const lab = (w.circuitMode || 'lab') === 'lab';
+    const M = lab ? (w.lab || {}) : (w.circuit || {});
+    ctx.fillStyle = lab ? '#fbfcfe' : '#fbf9f2';
+    ctx.fillRect(0, 0, W, H);
+    const scale = lab ? Math.min(25 / 44, 10 / 21) : 0.85;
+    thumbCircuit(ctx, M, s, scale, lab ? 4 : 8, lab ? 4 : 8);
+    ctx.fillStyle = '#8a93a2'; ctx.font = '9px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+    ctx.fillText(lab ? '회로 실험실' : '플래카드 전개도', 4, H - 4);
+    return;
+  }
+  if (tab === 'order') {
+    const n = (w.order || []).length;
+    ctx.fillStyle = '#f4f6f9'; ctx.fillRect(0, 0, W, H);
+    for (let i = 0; i < 9; i++) {
+      ctx.fillStyle = i < n ? '#4a6cf0' : '#d5dbe6';
+      ctx.fillRect(8 + i * 15, H / 2 - 5, 11, 10);
+    }
+    ctx.fillStyle = '#5a6474'; ctx.font = '10px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+    ctx.fillText(`작업 카드 ${n}/9 배열`, 8, H - 6);
+    return;
+  }
+  // case: 학생 치수로 만든 상자를 간단한 입체로
+  const P = (w.caseTab || {}).pieces || {};
+  const bw = num(P.back && P.back.w), bh = num(P.back && P.back.h), d = num(P.side && P.side.w);
+  ctx.fillStyle = '#f4f6f9'; ctx.fillRect(0, 0, W, H);
+  if (!bw || !bh) {
+    ctx.fillStyle = '#8a93a2'; ctx.font = '10px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('케이스 치수 입력 중', W / 2, H / 2);
+    return;
+  }
+  const sc = Math.min((W - 30) / (bw + (d || 5)), (H - 16) / (bh + (d || 5) * 0.5));
+  const fw = bw * sc, fh = bh * sc, dep = (d || 5) * sc * 0.55;
+  const x0 = (W - fw - dep) / 2, y0 = (H - fh + dep) / 2;
+  ctx.strokeStyle = '#7a8794'; ctx.lineWidth = 1.4; ctx.fillStyle = '#ffffff';
+  ctx.fillRect(x0, y0, fw, fh); ctx.strokeRect(x0, y0, fw, fh); // 앞면
+  ctx.beginPath(); // 윗면·옆면
+  ctx.moveTo(x0, y0); ctx.lineTo(x0 + dep, y0 - dep);
+  ctx.lineTo(x0 + dep + fw, y0 - dep); ctx.lineTo(x0 + fw, y0);
+  ctx.moveTo(x0 + dep + fw, y0 - dep); ctx.lineTo(x0 + fw + dep, y0 - dep + fh); ctx.lineTo(x0 + fw, y0 + fh);
+  ctx.stroke();
+  ctx.fillStyle = '#5a6474'; ctx.font = '9px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+  const f = v => v ? (Math.round(v * 10) / 10) : '?';
+  ctx.fillText(`${f(bw)} × ${f(bh)} × ${f((d || 0) + 0.5)}`, 4, H - 4);
 }
 // 최근 저장 시각 → 활동 배지
 function activityBadge(updatedAt) {
@@ -584,12 +650,13 @@ async function loadBanBoard(ban) {
           ${attHtml}
           <div class="stu-btns"><button class="w-att" data-bn="${ban}:${num}">출결</button></div>
         </div>`;
+      const tabBadge = `<span class="tab-badge">${TAB_NAMES[(r.payload || {}).activeTab] || '케이스'}</span>`;
       return `
         <div class="stu-card">
-          <div class="stu-head"><b>${num}번</b>${stBadge}
+          <div class="stu-head"><b>${num}번</b>${stBadge}${tabBadge}
             ${activityBadge(r.updated_at)}
             <span class="muted small">${new Date(r.updated_at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}</span></div>
-          <canvas class="stu-thumb" data-num="${num}"></canvas>
+          <canvas class="stu-thumb" data-num="${num}" data-open="cloud:${r.id}" title="눌러서 크게 보기"></canvas>
           ${attHtml}
           <div class="stu-chips">${summarize(r.payload || {})}</div>
           <div class="stu-btns">
@@ -600,10 +667,15 @@ async function loadBanBoard(ban) {
           </div>
         </div>`;
     }).join('');
-    // 썸네일 렌더 (작업물 미리보기 — 학생 저장 주기에 맞춰 자동 갱신됨)
+    // 썸네일 렌더 (학생이 보고 있는 탭의 장면 — 저장 주기에 맞춰 자동 갱신)
     grid.querySelectorAll('.stu-thumb').forEach(cnv => {
       const row = byNum[+cnv.dataset.num];
       try { drawThumb(cnv, row && row.payload); } catch (e) { /* 그리기 실패는 무시 */ }
+      // 썸네일 클릭 = 그 학생 크게 보기 (4초마다 갱신되는 관찰 화면)
+      cnv.addEventListener('click', () => {
+        const btn = cnv.parentElement.querySelector('.w-open');
+        if (btn) btn.click();
+      });
     });
     bindGridButtons(grid);
   } catch (e) {
@@ -732,7 +804,7 @@ function openReadOnly(w, label, cloudId) {
           document.dispatchEvent(new CustomEvent('work-loaded'));
         }
       } catch (e) { /* 다음 주기에 재시도 */ }
-    }, 15000);
+    }, 4000);
   }
 }
 

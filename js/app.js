@@ -1,7 +1,7 @@
 // 앱 진입점: 로그인(반·번호) → 탭 화면
 import { config, login, student, onCloudStatus, sheetLog, todayCode,
          sessionCodeValid, studentDayCode, sidInList, parseSid, makeSid, sidLength,
-         rosterActive, rosterStatus, BLOCKED_STATUS } from './state.js';
+         rosterActive, rosterStatus, BLOCKED_STATUS, work, touch } from './state.js';
 import { initCase, refreshFromWork } from './case3d.js';
 import { initCircuit, refreshCircuit } from './circuit.js';
 import { initDesign, refreshDesign } from './design.js';
@@ -94,6 +94,9 @@ export function switchTab(name) {
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === name));
   document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('active', p.id === 'tab-' + name));
   window.dispatchEvent(new Event('resize'));
+  // 교사 보드가 "지금 보고 있는 탭"을 알 수 있게 기록
+  work.activeTab = name;
+  touch();
   const fn = refreshers[name];
   if (fn) fn();
 }
