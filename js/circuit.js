@@ -124,20 +124,54 @@ function to3Dp(p) {
 }
 const d3 = (a, b) => Math.hypot(a.X - b.X, a.Y - b.Y, a.Z - b.Z);
 
-// 건전지 홀더: 학생이 직접 놓고 돌리는 부품. 단자·스위치 위치는 몸체 기준 회전.
+// 건전지 홀더: 실제 홀더처럼 세로 몸체, 위쪽 좁은 면에 (+)(−) 단자.
+// 여러 개 만들 수 있고 각자 전지 개수(전압)와 스위치를 가진다.
 function rotV(px, py, dir) {
   const a = (dir || 0) * Math.PI / 2;
   return { x: px * Math.cos(a) - py * Math.sin(a), y: px * Math.sin(a) + py * Math.cos(a) };
 }
+const HOLDER_W = 3.4, HOLDER_H = 5.0; // 몸체 (dir 0 기준: 세로)
 function holderGeom(h) {
-  const t0 = rotV(-1.5, -1.25, h.dir), t1 = rotV(1.5, -1.25, h.dir);
-  const sw = rotV(1.9, 0.45, h.dir);
-  const d0 = rotV(-1.5, -1.95, h.dir), d1 = rotV(1.5, -1.95, h.dir); // 도킹된 전선 끝 위치
+  // 단자: 위쪽 좁은 면. 왼쪽 (−), 오른쪽 (+) — 실제 홀더·팅커캐드와 같은 배치
+  const tP = rotV(0.85, -HOLDER_H / 2 - 0.25, h.dir);   // (+)
+  const tM = rotV(-0.85, -HOLDER_H / 2 - 0.25, h.dir);  // (−)
+  const dP = rotV(0.85, -HOLDER_H / 2 - 1.0, h.dir);
+  const dM = rotV(-0.85, -HOLDER_H / 2 - 1.0, h.dir);
+  const sw = rotV(0, HOLDER_H / 2 - 0.75, h.dir);
   return {
-    t: [{ x: h.x + t0.x, y: h.y + t0.y }, { x: h.x + t1.x, y: h.y + t1.y }],
-    dock: [{ x: h.x + d0.x, y: h.y + d0.y }, { x: h.x + d1.x, y: h.y + d1.y }],
+    t: [{ x: h.x + tP.x, y: h.y + tP.y }, { x: h.x + tM.x, y: h.y + tM.y }], // [0]=+, [1]=−
+    dock: [{ x: h.x + dP.x, y: h.y + dP.y }, { x: h.x + dM.x, y: h.y + dM.y }],
     sw: { x: h.x + sw.x, y: h.y + sw.y },
   };
+}
+// 테이프가 달라붙는 연결점들: LED·저항 다리, 홀더 단자, (끌어다 놓은) 전선 끝
+function terminals(C) {
+  const out = [];
+  C.leds.forEach((l, i) => {
+    const g = legs(l);
+    out.push({ x: g.a.x, y: g.a.y, label: '+' }, { x: g.k.x, y: g.k.y, label: '−' });
+  });
+  (C.resistors || []).forEach(r => {
+    const g = legs(r);
+    out.push({ x: g.a.x, y: g.a.y }, { x: g.k.x, y: g.k.y });
+  });
+  (C.holders || []).forEach(h => {
+    const g = holderGeom(h);
+    out.push({ x: g.t[0].x, y: g.t[0].y, label: '+' }, { x: g.t[1].x, y: g.t[1].y, label: '−' });
+    h.wires.forEach((w, wi) => {
+      if (!w.dock) out.push({ x: w.x, y: w.y, label: wi === 0 ? '+' : '−' });
+    });
+  });
+  return out;
+}
+// 연결점 근처면 그 점으로 스냅
+function snapToTerminal(p, C) {
+  let best = null, bd = 0.85;
+  for (const t of terminals(C)) {
+    const d = Math.hypot(p.x - t.x, p.y - t.y);
+    if (d < bd) { bd = d; best = t; }
+  }
+  return best;
 }
 
 const MARGIN = 0.8;
@@ -208,17 +242,26 @@ function normalize(C) {
   C.tapes.forEach(t => { if (t.surf === 'band') t.pts.forEach(p => conv({ ...p, surf: 'band' })); delete t.surf; });
   C.leds.forEach(conv);
   C.resistors.forEach(conv);
-  // 홀더는 학생이 놓는 부품 — 위치가 없는 옛 데이터는 미배치 상태로
-  if (C.holder && C.holder.x === undefined) C.holder = null;
+  // 홀더는 여러 개 가능 — 옛 단일 holder 데이터를 배열로 이관
+  if (!C.holders) C.holders = [];
   if (C.holder) {
-    C.holder.dir = C.holder.dir || 0;
-    if (!C.holder.wires) C.holder.wires = [{ dock: true }, { dock: true }];
-    C.holder.wires.forEach(w => {
+    if (C.holder.x !== undefined) { C.holder.on = C.tested; C.holders.push(C.holder); }
+    delete C.holder;
+  }
+  C.holders = C.holders.filter(h => h && h.x !== undefined);
+  C.holders.forEach(h => {
+    h.dir = h.dir || 0;
+    h.cells = h.cells || 2;
+    h.on = !!h.on;
+    if (!h.wires) h.wires = [{ dock: true }, { dock: true }];
+    h.wires.forEach(w => {
       if (w.surf === 'dock' || (w.x === undefined && !w.dock)) { w.dock = true; }
       delete w.surf;
     });
-  }
+  });
 }
+// 스위치 상태 요약 (썸네일·다른 탭이 tested를 계속 쓰므로 동기화)
+function syncTested(C) { C.tested = (C.holders || []).some(h => h.on); }
 
 // ---------- 실행 취소 ----------
 let undoStack = [];
@@ -244,20 +287,22 @@ function updateUndoBtn() {
 // ---------- 회로 해석 ----------
 // 백색 LED = 문턱 전압 Vth + 동저항 Rd 근사. I = (Vs − k·Vth) / (Rint + k·Rd + R외부)
 // → 1.5V 안 켜짐 / 3V 1개 정상 / 3V 직렬2 소등 / 6V 직렬2 정상 / 고전압 직결 과전류·소손. 현실과 같은 결론.
-function solve(Cin, labGeom) {
+function solve(Cin, labGeom, forceOn) {
   const C = Cin || am();
   const lab = labGeom !== undefined ? labGeom : (mode === 'lab' && C === work.lab);
   const prevGeom = geomLab;
   geomLab = lab;
   try {
-    return solveInner(C, lab);
+    return solveInner(C, lab, forceOn);
   } finally { geomLab = prevGeom; }
 }
-function solveInner(C, lab) {
+function solveInner(C, lab, forceOn) {
   normalize(C);
   const n = C.tapes.length;
-  const P = n, M = n + 1;
-  const parent = Array.from({ length: n + 2 }, (_, i) => i);
+  const H = C.holders.length;
+  // 노드: 테이프 0..n-1, 홀더 hi의 (+)=n+2hi, (−)=n+2hi+1
+  const term = (hi, pole) => n + hi * 2 + pole;
+  const parent = Array.from({ length: n + 2 * H }, (_, i) => i);
   const find = x => parent[x] === x ? x : (parent[x] = find(parent[x]));
   const union = (a, b) => { parent[find(a)] = find(b); };
 
@@ -272,33 +317,45 @@ function solveInner(C, lab) {
       if (hit) union(i, j);
     }
 
-  const Vs = lab ? ((C.holder && C.holder.cells) || 2) * 1.5 : config.voltage;
-  const res = { plus: -1, minus: -1, short: false, wiresOff: 0, on: C.tested, noHolder: !C.holder,
-    lit: {}, over: new Set(), burnt: new Set(), voltage: Vs,
+  const res = { short: false, on: C.tested, noHolder: H === 0, unconnected: 0,
+    lit: {}, over: new Set(), burnt: new Set(),
+    voltage: lab ? ((C.holders[0] && C.holders[0].cells) || 2) * 1.5 : config.voltage,
     tapeComp: C.tapes.map((_, i) => find(i)), energizedPlus: new Set(), energizedMinus: new Set(),
     hasBlockedSeries: false, dimSeries: false, noResistorLit: false, anyLit: false };
-  if (!C.holder) return res;
-
-  const [wp, wm] = C.holder.wires;
-  res.wiresOff = (wp.dock ? 1 : 0) + (wm.dock ? 1 : 0);
+  if (!H) return res;
 
   const tapeNear3D = (p3) => {
     for (let i = 0; i < n; i++)
       for (const s of samples[i]) if (d3(p3, s) < 0.7) return i;
     return -1;
   };
-  const wp3 = wp.dock ? null : to3Dp(wp);
-  const wm3 = wm.dock ? null : to3Dp(wm);
-  if (wp3) { const t = tapeNear3D(wp3); if (t >= 0) union(P, t); }
-  if (wm3) { const t = tapeNear3D(wm3); if (t >= 0) union(M, t); }
-  if (wp3 && wm3 && d3(wp3, wm3) < 0.7) union(P, M);
+  // 홀더 단자·전선 끝을 테이프와 연결 (단자에 테이프를 바로 붙여도 된다)
+  const poles = []; // {hi, pole, p3} — 다리 직접 접촉 판정용
+  C.holders.forEach((h, hi) => {
+    const g = holderGeom(h);
+    [0, 1].forEach(pole => {
+      const pts = [g.t[pole]];
+      const w = h.wires[pole];
+      if (w && !w.dock) pts.push(w);
+      pts.forEach(pt => {
+        const p3 = to3Dp(pt);
+        poles.push({ hi, pole, p3 });
+        const t = tapeNear3D(p3);
+        if (t >= 0) union(term(hi, pole), t);
+      });
+    });
+  });
+  // 전선 끝끼리·단자끼리 직접 닿는 경우
+  for (let a = 0; a < poles.length; a++)
+    for (let b = a + 1; b < poles.length; b++)
+      if (d3(poles[a].p3, poles[b].p3) < 0.7)
+        union(term(poles[a].hi, poles[a].pole), term(poles[b].hi, poles[b].pole));
 
   const nodeOf = (p) => {
     const p3 = to3Dp(p);
     const t = tapeNear3D(p3);
     if (t >= 0) return find(t);
-    if (wp3 && d3(p3, wp3) < 0.7) return find(P);
-    if (wm3 && d3(p3, wm3) < 0.7) return find(M);
+    for (const q of poles) if (d3(p3, q.p3) < 0.7) return find(term(q.hi, q.pole));
     return -1;
   };
 
@@ -311,9 +368,6 @@ function solveInner(C, lab) {
     const g = legs(r);
     edges.push({ type: 'res', i, a: nodeOf(g.a), k: nodeOf(g.k) });
   });
-
-  res.plus = find(P); res.minus = find(M);
-  if (res.plus === res.minus) { res.short = true; return res; }
 
   const reach = (start, fwd) => {
     const seen = new Set();
@@ -336,53 +390,62 @@ function solveInner(C, lab) {
     }
     return seen;
   };
-  res.energizedPlus = reach(res.plus, true);
-  res.energizedMinus = reach(res.minus, false);
 
-  const paths = [];
-  const dfs = (c, used, ledList, nRes) => {
-    if (c === res.minus) { if (ledList.length) paths.push({ leds: [...ledList], nRes }); return; }
-    if (paths.length > 300) return;
-    for (const e of edges) {
-      if (e.a < 0 || e.k < 0 || used.has(e.type + e.i)) continue;
-      let next = null;
-      if (e.type === 'led' && e.a === c) next = e.k;
-      if (e.type === 'res') { if (e.a === c) next = e.k; else if (e.k === c) next = e.a; }
-      if (next === null) continue;
-      used.add(e.type + e.i);
-      if (e.type === 'led') ledList.push(e.i);
-      dfs(next, used, ledList, nRes + (e.type === 'res' ? 1 : 0));
-      if (e.type === 'led') ledList.pop();
-      used.delete(e.type + e.i);
-    }
-  };
-  if (res.plus >= 0 && res.minus >= 0) dfs(res.plus, new Set(), [], 0);
+  // 홀더마다 독립적으로 해석 (자기 전압·자기 스위치) — 병렬 실험·비교 실험용
+  // ponytail: 홀더를 직렬로 이어 전압을 더하는 구성은 다루지 않는다 (필요해지면 그때)
+  for (let hi = 0; hi < H; hi++) {
+    const h = C.holders[hi];
+    const plus = find(term(hi, 0)), minus = find(term(hi, 1));
+    if (plus === minus) { res.short = true; continue; } // 이 홀더가 합선
+    const Vs = lab ? (h.cells || 2) * 1.5 : config.voltage;
+    if (!h.on && !forceOn) continue; // 스위치 꺼짐 (조립 순서 장면 등에서는 forceOn으로 켜진 모습을 그린다)
+    reach(plus, true).forEach(c => res.energizedPlus.add(c));
+    reach(minus, false).forEach(c => res.energizedMinus.add(c));
 
-  const conducting = [];
-  for (const p of paths) {
-    const k = p.leds.length;
-    const sumVth = p.leds.reduce((a, i) => a + vthOf(C.leds[i]), 0); // 색 LED는 문턱 전압이 다르다
-    const I = (Vs - sumVth) / (config.rint + k * config.ledRd + config.resistorOhm * p.nRes) * 1000;
-    if (I <= 0.2) { if (k >= 2) res.hasBlockedSeries = true; continue; }
-    conducting.push({ leds: p.leds, nRes: p.nRes, I });
-  }
-  const total = conducting.reduce((a, p) => a + p.I, 0);
-  const scale = total > config.imax ? config.imax / total : 1;
-  for (const p of conducting) {
-    const I = p.I * scale;
-    for (const i of p.leds) {
-      if (I > config.iBurn) { res.burnt.add(i); continue; } // 과전류로 소손 — 현실에서도 이렇게 된다
-      if (I > config.iOver) res.over.add(i);
-      if (p.leds.length >= 2 && I < 12) res.dimSeries = true;
-      const b = Math.min(1.3, I / 20); // 과전류면 정격보다 더 밝게 보인다
-      res.lit[i] = Math.max(res.lit[i] || 0, b * fOf(C.leds[i]));
-      if (p.nRes === 0) res.noResistorLit = true;
+    const paths = [];
+    const dfs = (c, used, ledList, nRes) => {
+      if (c === minus) { if (ledList.length) paths.push({ leds: [...ledList], nRes }); return; }
+      if (paths.length > 300) return;
+      for (const e of edges) {
+        if (e.a < 0 || e.k < 0 || used.has(e.type + e.i)) continue;
+        let next = null;
+        if (e.type === 'led' && e.a === c) next = e.k;
+        if (e.type === 'res') { if (e.a === c) next = e.k; else if (e.k === c) next = e.a; }
+        if (next === null) continue;
+        used.add(e.type + e.i);
+        if (e.type === 'led') ledList.push(e.i);
+        dfs(next, used, ledList, nRes + (e.type === 'res' ? 1 : 0));
+        if (e.type === 'led') ledList.pop();
+        used.delete(e.type + e.i);
+      }
+    };
+    dfs(plus, new Set(), [], 0);
+
+    const conducting = [];
+    for (const p of paths) {
+      const k = p.leds.length;
+      const sumVth = p.leds.reduce((a, i) => a + vthOf(C.leds[i]), 0);
+      const I = (Vs - sumVth) / (config.rint + k * config.ledRd + config.resistorOhm * p.nRes) * 1000;
+      if (I <= 0.2) { if (k >= 2) res.hasBlockedSeries = true; continue; }
+      conducting.push({ leds: p.leds, nRes: p.nRes, I });
+    }
+    const total = conducting.reduce((a, p) => a + p.I, 0);
+    const scale = total > config.imax ? config.imax / total : 1;
+    for (const p of conducting) {
+      const I = p.I * scale;
+      for (const i of p.leds) {
+        if (I > config.iBurn) { res.burnt.add(i); continue; }
+        if (I > config.iOver) res.over.add(i);
+        if (p.leds.length >= 2 && I < 12) res.dimSeries = true;
+        const b = Math.min(1.3, I / 20);
+        res.lit[i] = Math.max(res.lit[i] || 0, b * fOf(C.leds[i]));
+        if (p.nRes === 0) res.noResistorLit = true;
+      }
     }
   }
-  res.burnt.forEach(i => delete res.lit[i]); // 타버린 LED는 켜지지 않는다
+  res.burnt.forEach(i => delete res.lit[i]);
   res.anyLit = Object.keys(res.lit).length > 0;
-  // 스위치가 꺼져 있으면 불은 켜지지 않는다 (연결 상태 판정만 유지)
-  if (!C.tested) { res.wouldLit = res.lit; res.lit = {}; res.anyLit = false; }
+  res.anyOn = C.holders.some(h => h.on);
   return res;
 }
 
@@ -405,8 +468,8 @@ export function drawAssembled(tctx, rx, ry, rw, rh, opts = {}) {
   const d = dims();
   const C = work.circuit; // 항상 플래카드 회로를 그린다
   normalize(C);
-  const R = solve(work.circuit, false);
-  const litSet = opts.lit ? (C.tested ? R.lit : (R.wouldLit || {})) : {};
+  const R = solve(work.circuit, false, !!opts.lit); // 조립 장면에서는 스위치가 꺼져 있어도 켜진 모습
+  const litSet = opts.lit ? R.lit : {};
   const pj = makeProj(d, rx, ry, rw, rh);
   const depth = d.td + 0.5;
   const walls = opts.walls || 'solid';
@@ -595,16 +658,32 @@ function draw() {
     ctx.lineWidth = 0.5 * Z; ctx.lineCap = 'round';
     ctx.beginPath();
     drawingTape.forEach((p, j) => j ? ctx.lineTo(p.x * Z, p.y * Z) : ctx.moveTo(p.x * Z, p.y * Z));
-    if (cursor) { const c2 = clampNet({ x: snap(cursor.x), y: snap(cursor.y) }); ctx.lineTo(c2.x * Z, c2.y * Z); }
+    if (cursor) {
+      const sn = tool === 'tape' ? snapToTerminal(cursor, C) : null;
+      const c2 = sn || clampNet({ x: snap(cursor.x), y: snap(cursor.y) });
+      ctx.lineTo(c2.x * Z, c2.y * Z);
+    }
     ctx.stroke();
   }
 
-  if (C.holder) drawHolder(C.holder, C);
+  C.holders.forEach((h, hi) => drawHolder(h, hi));
 
   if (litMode) {
     ctx.fillStyle = 'rgba(14,17,28,0.55)';
     ctx.fillRect(-ox * Z, -oy * Z, W, H);
-    if (C.holder) drawHolder(C.holder, C); // 스위치는 어두워져도 보이게
+    C.holders.forEach((h, hi) => drawHolder(h, hi)); // 스위치는 어두워져도 보이게
+  }
+
+  // 연결점 표시 — 테이프 도구일 때 뚜렷하게, 커서가 가까우면 크게
+  if (!litMode || tool === 'tape') {
+    const sn = tool === 'tape' && cursor ? snapToTerminal(cursor, C) : null;
+    terminals(C).forEach(t => {
+      const near = sn && sn.x === t.x && sn.y === t.y;
+      ctx.beginPath(); ctx.arc(t.x * Z, t.y * Z, near ? 6 : (tool === 'tape' ? 4 : 2.5), 0, 7);
+      ctx.fillStyle = near ? '#4a6cf0' : 'rgba(74,108,240,0.28)';
+      ctx.fill();
+      if (tool === 'tape') { ctx.strokeStyle = '#4a6cf0'; ctx.lineWidth = 1; ctx.stroke(); }
+    });
   }
 
   // 저항
@@ -672,7 +751,7 @@ function draw() {
   const selObj = selected && (
     selected.type === 'led' ? C.leds[selected.i] :
     selected.type === 'res' ? C.resistors[selected.i] :
-    selected.type === 'holder' ? C.holder : null);
+    selected.type === 'holder' ? C.holders[selected.i] : null);
   if (selObj) {
     const off = selected.type === 'holder' ? 3.4 : 1.1;
     const bx = (selObj.x + off) * Z, by = (selObj.y - off) * Z;
@@ -687,11 +766,12 @@ function draw() {
   ctx.restore();
 }
 
-function drawHolder(h, C) {
+function drawHolder(h, hi) {
   const g = holderGeom(h);
   const wcol = ['#d64545', '#2f3640'];
-  // 전선 (몸체보다 먼저 — 몸체 아래에서 나오는 느낌)
-  C.holder.wires.forEach((w, wi) => {
+  const isSel = selected && selected.type === 'holder' && selected.i === hi;
+  // 전선 (몸체보다 먼저)
+  h.wires.forEach((w, wi) => {
     const t = g.t[wi];
     ctx.strokeStyle = wcol[wi]; ctx.lineWidth = 3;
     if (!w.dock) {
@@ -702,38 +782,50 @@ function drawHolder(h, C) {
       ctx.stroke();
       ctx.beginPath(); ctx.arc(w.x * Z, w.y * Z, 5, 0, 7);
       ctx.fillStyle = wcol[wi]; ctx.fill();
-      if (selected && selected.type === 'wire' && selected.wi === wi) { ctx.strokeStyle = '#2b6cb0'; ctx.lineWidth = 2; ctx.stroke(); }
-      ctx.font = 'bold 12px sans-serif'; ctx.fillStyle = wcol[wi];
-      ctx.fillText(wi === 0 ? '+' : '−', w.x * Z + 7, w.y * Z - 6);
-    } else {
-      const dpt = g.dock[wi];
-      ctx.beginPath(); ctx.moveTo(t.x * Z, t.y * Z); ctx.lineTo(dpt.x * Z, dpt.y * Z); ctx.stroke();
-      ctx.beginPath(); ctx.arc(dpt.x * Z, dpt.y * Z, 6, 0, 7);
-      ctx.fillStyle = wcol[wi]; ctx.fill();
-      if (selected && selected.type === 'wire' && selected.wi === wi) { ctx.strokeStyle = '#2b6cb0'; ctx.lineWidth = 2; ctx.stroke(); }
-      ctx.fillStyle = wcol[wi]; ctx.font = 'bold 12px sans-serif';
-      ctx.fillText(wi === 0 ? '+' : '−', dpt.x * Z + 8, dpt.y * Z);
+      if (selected && selected.type === 'wire' && selected.hi === hi && selected.wi === wi) { ctx.strokeStyle = '#2b6cb0'; ctx.lineWidth = 2; ctx.stroke(); }
     }
   });
-  // 몸체 (방향대로 회전)
+  // 몸체 (세로형, 방향대로 회전) — 전지 두 칸이 나란히 보이는 실제 홀더 모양
   ctx.save();
   ctx.translate(h.x * Z, h.y * Z);
   ctx.rotate((h.dir || 0) * Math.PI / 2);
-  ctx.fillStyle = '#3b4552';
-  ctx.strokeStyle = selected && selected.type === 'holder' ? '#2b6cb0' : '#20272f';
-  ctx.lineWidth = 2;
-  ctx.beginPath(); ctx.roundRect(-2.75 * Z, -1.25 * Z, 5.5 * Z, 2.5 * Z, 5); ctx.fill(); ctx.stroke();
-  // 스위치 (몸체 위)
-  ctx.beginPath(); ctx.arc(1.9 * Z, 0.45 * Z, 0.6 * Z, 0, 7);
-  ctx.fillStyle = C.tested ? '#37c26e' : '#828b96'; ctx.fill();
-  ctx.strokeStyle = '#20272f'; ctx.lineWidth = 1.5; ctx.stroke();
+  const hw = HOLDER_W, hh = HOLDER_H;
+  ctx.fillStyle = '#2f3844';
+  ctx.strokeStyle = isSel ? '#2b6cb0' : '#1c232c';
+  ctx.lineWidth = isSel ? 2.5 : 2;
+  ctx.beginPath(); ctx.roundRect(-hw / 2 * Z, -hh / 2 * Z, hw * Z, hh * Z, 6); ctx.fill(); ctx.stroke();
+  // 단자 (위쪽 좁은 면: 왼쪽 −, 오른쪽 +)
+  [[-0.85, '#2f3640'], [0.85, '#d64545']].forEach(([tx, col]) => {
+    ctx.fillStyle = col;
+    ctx.beginPath(); ctx.roundRect((tx - 0.22) * Z, (-hh / 2 - 0.45) * Z, 0.44 * Z, 0.5 * Z, 2); ctx.fill();
+  });
+  // 전지 칸
+  const cells = h.cells || 2;
+  const cw = Math.min(1.25, (hw - 0.6) / Math.min(cells, 2));
+  for (let ci = 0; ci < Math.min(cells, 2); ci++) {
+    const cx = (ci - (Math.min(cells, 2) - 1) / 2) * (cw + 0.15);
+    ctx.fillStyle = '#2e8f8f';
+    ctx.beginPath(); ctx.roundRect((cx - cw / 2) * Z, (-hh / 2 + 0.5) * Z, cw * Z, (hh - 1.7) * Z, 5); ctx.fill();
+    ctx.fillStyle = '#57c6c0';
+    ctx.beginPath(); ctx.roundRect((cx - cw / 2) * Z, (-hh / 2 + 0.5) * Z, cw * Z, 1.1 * Z, 5); ctx.fill();
+  }
+  // 스위치 (아래쪽)
+  ctx.beginPath(); ctx.arc(0, (hh / 2 - 0.75) * Z, 0.55 * Z, 0, 7);
+  ctx.fillStyle = h.on ? '#37c26e' : '#828b96'; ctx.fill();
+  ctx.strokeStyle = '#1c232c'; ctx.lineWidth = 1.5; ctx.stroke();
   ctx.restore();
-  // 글자는 회전 없이
-  ctx.fillStyle = '#cfd6de'; ctx.font = '11px sans-serif'; ctx.textAlign = 'center';
-  const cells = mode === 'lab' ? (h.cells || 2) : 2;
-  ctx.fillText(`AA×${cells} · ${(cells * 1.5).toFixed(1)}V`, h.x * Z, (h.y - 0.25) * Z);
-  ctx.fillStyle = '#fff'; ctx.font = `bold ${Math.max(9, Z * 0.5)}px sans-serif`;
-  ctx.fillText(C.tested ? 'ON' : 'OFF', g.sw.x * Z, g.sw.y * Z + Z * 0.18);
+  // 글자 (회전 없이)
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#d0d6de'; ctx.font = `${Math.max(9, Z * 0.5)}px sans-serif`;
+  ctx.fillText(`AA×${cells} ${(cells * 1.5).toFixed(1)}V`, h.x * Z, (h.y + rotV(0, -hh / 2 + 2.6, h.dir).y * 0) * Z + 4); // 중앙쯤
+  // 단자 라벨
+  ctx.font = 'bold 11px sans-serif';
+  ctx.fillStyle = '#2f3640';
+  ctx.fillText('−', g.t[1].x * Z, (g.t[1].y - 0.45) * Z);
+  ctx.fillStyle = '#d64545';
+  ctx.fillText('+', g.t[0].x * Z, (g.t[0].y - 0.45) * Z);
+  ctx.fillStyle = '#fff'; ctx.font = `bold ${Math.max(9, Z * 0.45)}px sans-serif`;
+  ctx.fillText(h.on ? 'ON' : 'OFF', g.sw.x * Z, g.sw.y * Z + Z * 0.16);
   ctx.textAlign = 'left';
 }
 
@@ -743,13 +835,11 @@ function updatePanel() {
   const el = $('circuit-info');
   let html = '';
   if (!R) { el.innerHTML = html; return; }
-  if (mode === 'lab' && C.holder)
-    html += `<p class="supply">지금 전지 — AA × ${(C.holder.cells || 2)}개 = <b>${R.voltage.toFixed(1)}V</b></p>`;
+  if (mode === 'lab' && C.holders.length)
+    html += `<p class="supply">전지 — ${C.holders.map(h => `AA×${h.cells || 2} (${((h.cells || 2) * 1.5).toFixed(1)}V)`).join(' · ')}</p>`;
   if (mode === 'placard' && C.leds.length > config.ledCount)
     html += `<p class="hint">실제로 지급되는 LED는 ${config.ledCount}개예요. 배치를 참고로 실험하는 건 자유!</p>`;
-  if (R.noHolder) html += '<p class="muted">건전지 홀더를 놓고, 빨간 선(+)·검은 선(−)을 회로에 연결해 보세요.</p>';
-  else if (R.wiresOff === 2) html += '<p class="muted">전지의 빨간 선(+)과 검은 선(−) 끝을 끌어다 테이프나 LED 다리에 붙여 보세요.</p>';
-  else if (R.wiresOff === 1) html += '<p class="muted">전선 한 가닥이 아직 전지에 꽂혀만 있어요. 마저 연결해 볼까요?</p>';
+  if (R.noHolder) html += '<p class="muted">건전지 홀더를 놓고, 홀더의 (+)(−) 단자에서 테이프를 그어 LED 다리에 연결해 보세요.</p>';
   else if (R.short) html += '<p class="warn">전지가 뜨거워집니다! (+)와 (−)가 어딘가에서 직접 만나고 있습니다.</p>';
   else if (C.tested) {
     const litN = Object.keys(R.lit).length;
@@ -811,26 +901,27 @@ function inHolderBody(p, h) {
   const dx = p.x - h.x, dy = p.y - h.y;
   const lx = dx * Math.cos(a) - dy * Math.sin(a);
   const ly = dx * Math.sin(a) + dy * Math.cos(a);
-  return Math.abs(lx) < 2.9 && Math.abs(ly) < 1.4;
+  return Math.abs(lx) < HOLDER_W / 2 + 0.3 && Math.abs(ly) < HOLDER_H / 2 + 0.3;
 }
 function hitTest(p) {
   const C = am();
   // 회전 버튼
   if (cv._rotBtn && Math.hypot(p.x - cv._rotBtn.x, p.y - cv._rotBtn.y) < 0.85) return { type: 'rotate' };
-  if (C.holder) {
-    const g = holderGeom(C.holder);
-    if (Math.hypot(p.x - g.sw.x, p.y - g.sw.y) < 0.85) return { type: 'switch' };
+  for (let hi = C.holders.length - 1; hi >= 0; hi--) {
+    const h = C.holders[hi];
+    const g = holderGeom(h);
+    if (Math.hypot(p.x - g.sw.x, p.y - g.sw.y) < 0.8) return { type: 'switch', hi };
     for (let wi = 0; wi < 2; wi++) {
-      const w = C.holder.wires[wi];
-      if (!w.dock && Math.hypot(p.x - w.x, p.y - w.y) < 0.7) return { type: 'wire', wi };
-      if (w.dock && Math.hypot(p.x - g.dock[wi].x, p.y - g.dock[wi].y) < 0.8) return { type: 'wire', wi };
+      const w = h.wires[wi];
+      if (!w.dock && Math.hypot(p.x - w.x, p.y - w.y) < 0.7) return { type: 'wire', hi, wi };
     }
   }
   for (let i = C.leds.length - 1; i >= 0; i--)
     if (Math.hypot(p.x - C.leds[i].x, p.y - C.leds[i].y) < 0.8) return { type: 'led', i };
   for (let i = (C.resistors || []).length - 1; i >= 0; i--)
     if (Math.hypot(p.x - C.resistors[i].x, p.y - C.resistors[i].y) < 0.8) return { type: 'res', i };
-  if (C.holder && inHolderBody(p, C.holder)) return { type: 'holder' };
+  for (let hi = C.holders.length - 1; hi >= 0; hi--)
+    if (inHolderBody(p, C.holders[hi])) return { type: 'holder', i: hi };
   for (let i = C.tapes.length - 1; i >= 0; i--)
     if (distTape2D(p, C.tapes[i]) < 0.5) return { type: 'tape', i };
   return null;
@@ -841,7 +932,7 @@ function rotateSelected() {
   const o = selected && (
     selected.type === 'led' ? C.leds[selected.i] :
     selected.type === 'res' ? C.resistors[selected.i] :
-    selected.type === 'holder' ? C.holder : null);
+    selected.type === 'holder' ? C.holders[selected.i] : null);
   if (o && !readOnly) {
     pushUndo();
     o.dir = ((o.dir || 0) + 1) % 4;
@@ -850,20 +941,23 @@ function rotateSelected() {
   }
 }
 
-function toggleSwitch() {
+// 스위치: hi를 주면 그 홀더만, 없으면 전체 켜기/끄기 (버튼)
+function toggleSwitch(hi) {
   const C = am();
   if (readOnly) return;
-  if (!C.holder) {
+  if (!C.holders.length) {
     $('circuit-info').innerHTML = '<p class="hint">먼저 건전지 홀더를 놓아 주세요. 스위치는 홀더에 달려 있어요.</p>';
     return;
   }
-  if (!C.tested) {
-    // 예측 먼저는 플래카드(수행)에서만 — 실험실은 자유롭게 켜 본다
-    if (mode === 'placard' && config.askPredict && C.predictCount === '') {
-      $('circuit-predict-hint').textContent = '몇 개가 켜질지 먼저 예측해 보세요.';
-      return;
-    }
-    C.tested = true;
+  const turningOn = hi !== undefined ? !C.holders[hi].on : !C.holders.some(h => h.on);
+  if (turningOn && mode === 'placard' && config.askPredict && C.predictCount === '') {
+    $('circuit-predict-hint').textContent = '몇 개가 켜질지 먼저 예측해 보세요.';
+    return;
+  }
+  if (hi !== undefined) C.holders[hi].on = !C.holders[hi].on;
+  else C.holders.forEach(h => h.on = turningOn);
+  syncTested(C);
+  if (turningOn) {
     const R = solve();
     const litN = Object.keys(R.lit).length;
     const summary = `LED ${C.leds.length}개 중 ${litN}개 켜짐` +
@@ -874,10 +968,8 @@ function toggleSwitch() {
       sheetLog('회로 점등', summary + (config.askPredict ? `, 예측 ${C.predictCount}개` : ''));
       renderLogList();
     } else {
-      sheetLog('실험실 점등', `${R.voltage.toFixed(1)}V, ${summary}`);
+      sheetLog('실험실 점등', summary);
     }
-  } else {
-    C.tested = false;
   }
   touch();
   updateSwitchButton();
@@ -973,12 +1065,17 @@ export function initCircuit() {
     normalize(C);
     // 스위치·회전 버튼은 어떤 도구에서든 동작
     const pre = hitTest(p);
-    if (pre && pre.type === 'switch') { toggleSwitch(); return; }
+    if (pre && pre.type === 'switch') { toggleSwitch(pre.hi); return; }
     if (pre && pre.type === 'rotate' && tool === 'select') { rotateSelected(); return; }
 
     if (tool === 'tape') {
+      // 연결점(LED 다리·홀더 단자 등) 근처면 정확히 그 점에 스냅.
+      // 이미 그리는 중일 때 연결점을 클릭하면 한 번 클릭으로 바로 연결·완료된다.
+      const sn = snapToTerminal(p, C);
+      const pt = sn ? { x: sn.x, y: sn.y } : clampNet({ x: snap(p.x), y: snap(p.y) });
       if (!drawingTape) drawingTape = [];
-      drawingTape.push(clampNet({ x: snap(p.x), y: snap(p.y) }));
+      drawingTape.push(pt);
+      if (sn && drawingTape.length >= 2) { finishTape(); return; }
       draw();
       return;
     }
@@ -998,11 +1095,15 @@ export function initCircuit() {
       return;
     }
     if (tool === 'holder') {
+      // 홀더는 여러 개 만들 수 있다 — 클릭할 때마다 새로 놓임
       pushUndo();
-      C.holder = C.holder || { dir: 0, cells: 2, wires: [{ dock: true }, { dock: true }] };
-      Object.assign(C.holder, clampNet({ x: snap(p.x), y: snap(p.y) }));
-      selected = { type: 'holder' };
-      C.tested = false; afterChange();
+      C.holders.push({
+        ...clampNet({ x: snap(p.x), y: snap(p.y) }),
+        dir: 0, cells: 2, on: false,
+        wires: [{ dock: true }, { dock: true }],
+      });
+      selected = { type: 'holder', i: C.holders.length - 1 };
+      syncTested(C); afterChange();
       return;
     }
     if (tool === 'erase') {
@@ -1012,9 +1113,9 @@ export function initCircuit() {
         if (hit.type === 'led') C.leds.splice(hit.i, 1);
         else if (hit.type === 'res') C.resistors.splice(hit.i, 1);
         else if (hit.type === 'tape') C.tapes.splice(hit.i, 1);
-        else if (hit.type === 'wire') C.holder.wires[hit.wi] = { dock: true };
-        else if (hit.type === 'holder') C.holder = null;
-        C.tested = false; afterChange();
+        else if (hit.type === 'wire') C.holders[hit.hi].wires[hit.wi] = { dock: true };
+        else if (hit.type === 'holder') C.holders.splice(hit.i, 1);
+        syncTested(C); afterChange();
       }
       return;
     }
@@ -1026,7 +1127,7 @@ export function initCircuit() {
       pushUndo(); // 드래그 시작 전 상태 저장
       if (selected.type === 'led') dragOff = { x: p.x - C.leds[selected.i].x, y: p.y - C.leds[selected.i].y };
       else if (selected.type === 'res') dragOff = { x: p.x - C.resistors[selected.i].x, y: p.y - C.resistors[selected.i].y };
-      else if (selected.type === 'holder') dragOff = { x: p.x - C.holder.x, y: p.y - C.holder.y };
+      else if (selected.type === 'holder') dragOff = { x: p.x - C.holders[selected.i].x, y: p.y - C.holders[selected.i].y };
       else if (selected.type === 'wire') dragOff = { x: 0, y: 0 };
       else if (selected.type === 'tape') dragOff = { x: p.x, y: p.y, pts: C.tapes[selected.i].pts.map(q => ({ ...q })) };
     }
@@ -1048,13 +1149,14 @@ export function initCircuit() {
       const r = C.resistors[selected.i];
       Object.assign(r, clampPart({ x: snap(p.x - dragOff.x), y: snap(p.y - dragOff.y) }, r.dir));
     } else if (selected.type === 'holder') {
-      Object.assign(C.holder, clampNet({ x: snap(p.x - dragOff.x), y: snap(p.y - dragOff.y) }));
+      Object.assign(C.holders[selected.i], clampNet({ x: snap(p.x - dragOff.x), y: snap(p.y - dragOff.y) }));
     } else if (selected.type === 'wire') {
+      const h = C.holders[selected.hi];
       // 홀더 몸체 위로 가져가면 전지에 도로 꽂힌다
-      if (C.holder && inHolderBody(p, C.holder))
-        C.holder.wires[selected.wi] = { dock: true };
-      else
-        C.holder.wires[selected.wi] = { ...clampNet({ x: snap(p.x), y: snap(p.y) }) };
+      if (h && inHolderBody(p, h))
+        h.wires[selected.wi] = { dock: true };
+      else if (h)
+        h.wires[selected.wi] = { ...clampNet({ x: snap(p.x), y: snap(p.y) }) };
     } else if (selected.type === 'tape') {
       const dx = snap(p.x - dragOff.x), dy = snap(p.y - dragOff.y);
       C.tapes[selected.i].pts = dragOff.pts.map(q => clampNet({ x: q.x + dx, y: q.y + dy }));
@@ -1078,9 +1180,9 @@ export function initCircuit() {
       if (selected.type === 'led') C.leds.splice(selected.i, 1);
       else if (selected.type === 'res') C.resistors.splice(selected.i, 1);
       else if (selected.type === 'tape') C.tapes.splice(selected.i, 1);
-      else if (selected.type === 'wire') C.holder.wires[selected.wi] = { dock: true };
-      else if (selected.type === 'holder') C.holder = null;
-      selected = null; C.tested = false; afterChange();
+      else if (selected.type === 'wire') C.holders[selected.hi].wires[selected.wi] = { dock: true };
+      else if (selected.type === 'holder') C.holders.splice(selected.i, 1);
+      selected = null; syncTested(C); afterChange();
     }
     if (e.key.toLowerCase() === 'r') rotateSelected();
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); doUndo(); }
@@ -1102,7 +1204,7 @@ export function initCircuit() {
     am().predictCount = $('in-predict-led').value;
     touch(); updateSwitchButton();
   });
-  $('btn-test').addEventListener('click', toggleSwitch);
+  $('btn-test').addEventListener('click', () => toggleSwitch());
   $('btn-undo').addEventListener('click', doUndo);
   document.querySelectorAll('#circ-mode button').forEach(b =>
     b.addEventListener('click', () => setCircuitMode(b.dataset.cm)));
@@ -1121,10 +1223,9 @@ export function initCircuit() {
   document.querySelectorAll('#holder-cells button').forEach(b =>
     b.addEventListener('click', () => {
       const C = am();
-      if (!C.holder || readOnly) return;
+      if (readOnly || !selected || selected.type !== 'holder' || !C.holders[selected.i]) return;
       pushUndo();
-      C.holder.cells = +b.dataset.n;
-      C.tested = false;
+      C.holders[selected.i].cells = +b.dataset.n;
       afterChange();
     }));
   $('btn-circuit-reset').addEventListener('click', () => {
@@ -1132,7 +1233,7 @@ export function initCircuit() {
     if (!confirm('회로를 처음 상태로 되돌릴까요? (실행 취소로 복구할 수 있어요)')) return;
     pushUndo();
     const C = am();
-    C.tapes = []; C.leds = []; C.resistors = []; C.holder = null; C.tested = false;
+    C.tapes = []; C.leds = []; C.resistors = []; C.holders = []; C.tested = false;
     selected = null; drawingTape = null;
     afterChange();
   });
@@ -1145,7 +1246,6 @@ function finishTape() {
   if (drawingTape && drawingTape.length >= 2) {
     pushUndo();
     am().tapes.push({ pts: drawingTape });
-    am().tested = false;
     drawingTape = null;
     afterChange();
   } else { drawingTape = null; draw(); }
@@ -1169,10 +1269,10 @@ function updateSelPanel() {
     document.querySelectorAll('#led-kind button').forEach(b => b.classList.toggle('active', b.dataset.k === kind));
   $('magic-wrap').style.display = led && kind === 'white' ? '' : 'none';
   // 실험실에서 홀더를 선택하면 전지 개수(전압) 선택 표시
-  const holderSel = selected && selected.type === 'holder' && mode === 'lab' && am().holder;
+  const holderSel = selected && selected.type === 'holder' && mode === 'lab' && am().holders[selected.i];
   $('holder-cells').style.display = holderSel ? '' : 'none';
   if (holderSel) {
-    const n = am().holder.cells || 2;
+    const n = am().holders[selected.i].cells || 2;
     document.querySelectorAll('#holder-cells button').forEach(b => b.classList.toggle('active', +b.dataset.n === n));
   }
   if (led) {
@@ -1183,10 +1283,10 @@ function updateSelPanel() {
 
 export function refreshCircuit() {
   normalize(work.circuit);
-  normalize(work.lab = work.lab || { leds: [], resistors: [], tapes: [], holder: null, tested: false });
+  normalize(work.lab = work.lab || { leds: [], resistors: [], tapes: [], holders: [], tested: false });
   // 플래카드에 작업물이 있으면 이어서, 없으면 실험실부터 (회로 원리를 먼저 익히도록)
   const P = work.circuit;
-  const hasPlacard = P.tapes.length || P.leds.length || P.holder;
+  const hasPlacard = P.tapes.length || P.leds.length || P.holders.length;
   $('in-predict-led').value = work.circuit.predictCount ?? '';
   $('tool-res').style.display = config.advanced ? '' : 'none';
   $('guide-adv').style.display = config.advanced ? '' : 'none';

@@ -506,10 +506,11 @@ function thumbCircuit(ctx, M, s, scale, ox, oy) {
       : ctx.moveTo(ox + p.x * scale * s, oy + p.y * scale * s));
     ctx.stroke();
   });
-  if (M.holder && M.holder.x !== undefined) {
+  (M.holders || (M.holder ? [M.holder] : [])).forEach(h => {
+    if (h.x === undefined) return;
     ctx.fillStyle = '#3b4552';
-    ctx.fillRect(ox + (M.holder.x - 2.75) * scale * s, oy + (M.holder.y - 1.25) * scale * s, 5.5 * scale * s, 2.5 * scale * s);
-  }
+    ctx.fillRect(ox + (h.x - 1.7) * scale * s, oy + (h.y - 2.5) * scale * s, 3.4 * scale * s, 5 * scale * s);
+  });
   (M.leds || []).forEach(l => {
     const x = ox + l.x * scale * s, y = oy + l.y * scale * s;
     if (M.tested) {

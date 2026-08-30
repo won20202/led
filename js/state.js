@@ -248,10 +248,10 @@ export function blankWork() {
     },
     circuit: {
       leds: [], resistors: [], tapes: [],
-      holder: null,
+      holders: [],
       predictCount: '', tested: false,
     },
-    lab: { leds: [], resistors: [], tapes: [], holder: null, tested: false }, // 회로 실험실 (자유 실험)
+    lab: { leds: [], resistors: [], tapes: [], holders: [], tested: false }, // 회로 실험실 (자유 실험)
     design: {
       letters: [
         { text: '', x: 5.5, y: 5, size: 6, stroke: 0.7 },
