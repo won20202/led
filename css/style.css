@@ -213,7 +213,8 @@ button.link:hover { color: #4a5561; background: transparent; }
 }
 #float-props .fp { font-size: 12px; padding: 4px 8px; border-radius: 8px; }
 #float-props .fp.on { outline: 2px solid var(--accent); }
-#float-props .fp-color { width: 22px; height: 22px; padding: 0; border-radius: 50%; border: 1px solid rgba(0,0,0,0.2); }
+#float-props .fp-color { width: 17px; height: 17px; padding: 0; border-radius: 50%; border: 1px solid rgba(0,0,0,0.2); }
+#float-props .fp-colors { display: grid; grid-template-columns: repeat(9, 17px); gap: 3px; }
 #float-props .fp-cell { line-height: 1.1; }
 #float-props .fp-cell small { display: block; font-size: 9px; opacity: 0.7; }
 #float-props .fp-del { color: #c0392b; }
