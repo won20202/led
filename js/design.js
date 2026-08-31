@@ -3,7 +3,7 @@
 import { config, work, touch, readOnly, sheetLog } from './state.js';
 
 const $ = id => document.getElementById(id);
-const S = 24;   // 표시용 px/cm
+let S = 24;     // 표시용 px/cm — 화면 폭에 맞춰 자동 조정
 const RA = 8;   // 분석용 px/cm
 const FONT = '"Noto Sans CJK KR","Noto Sans KR","Malgun Gothic","Segoe UI Symbol",sans-serif';
 
@@ -201,6 +201,10 @@ export function getDesignMask() {
 
 // ---------- 표시 ----------
 function draw() {
+  // 작업 화면이 가운데 영역을 꽉 채우도록 자동 확대
+  const host = cv.closest('.panel-center');
+  const avail = (host ? host.clientWidth : 700) - 50;
+  S = Math.max(18, Math.min(36, Math.floor(avail / config.frontW)));
   const W = config.frontW * S, H = config.frontH * S;
   cv.width = W + 20; cv.height = H + 20;
   ctx.fillStyle = '#dfe4ea'; ctx.fillRect(0, 0, cv.width, cv.height);

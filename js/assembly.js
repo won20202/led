@@ -84,6 +84,10 @@ let placing = false;
 let lastFinalKey = '';
 
 function clearCanvas() {
+  // 시뮬레이션 화면이 가용 폭을 꽉 채우도록 자동 확대
+  const host = cv.parentElement;
+  const w = Math.max(520, Math.min(1000, (host ? host.clientWidth : 560) - 8));
+  if (cv.width !== w) { cv.width = w; cv.height = Math.round(w * 0.6); }
   ctx.fillStyle = '#f4f6f9';
   ctx.fillRect(0, 0, cv.width, cv.height);
 }

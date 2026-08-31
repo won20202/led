@@ -49,6 +49,7 @@ let cv, ctx, tool = 'none'; // 'none' = 기본(누르면 선택, 끌면 이동)
 let mode = 'lab';          // 'lab' = 회로 실험실(빈 화면) | 'placard' = 플래카드 전개도
 let view3d = false;
 let Z = 15;
+let zAuto = true;          // 화면 폭에 맞춰 자동 확대 (수동 줌을 쓰면 해제)
 
 // 지금 편집 중인 회로 모델 (실험실 or 플래카드)
 function am() { return mode === 'lab' ? (work.lab = work.lab || { leds: [], resistors: [], tapes: [], holder: null, tested: false }) : work.circuit; }
@@ -587,6 +588,13 @@ function draw() {
     return;
   }
   geomLab = mode === 'lab';
+  // 작업 화면이 가운데 영역을 꽉 채우도록 자동 확대
+  if (zAuto) {
+    const host = cv.closest('.panel-center');
+    const avail = (host ? host.clientWidth : 760) - 40;
+    const cmW = (mode === 'lab' ? LAB.w : d.sw * 2 + d.bw) + MARGIN * 2;
+    Z = Math.max(10, Math.min(28, Math.floor(avail / cmW)));
+  }
   const { ox, oy } = origin();
   const W = mode === 'lab'
     ? Math.round((LAB.w + MARGIN * 2) * Z)
@@ -1062,14 +1070,19 @@ export function initCircuit() {
   cv.addEventListener('contextmenu', e => e.preventDefault());
 
   $('btn-3d').addEventListener('click', () => set3D(!view3d));
-  $('zoom-in').addEventListener('click', () => { if (!view3d) { Z = Math.min(30, Z + 3); draw(); } });
-  $('zoom-out').addEventListener('click', () => { if (!view3d) { Z = Math.max(8, Z - 3); draw(); } });
+  $('zoom-in').addEventListener('click', () => { if (!view3d) { zAuto = false; Z = Math.min(30, Z + 3); draw(); } });
+  $('zoom-out').addEventListener('click', () => { if (!view3d) { zAuto = false; Z = Math.max(8, Z - 3); draw(); } });
+  $('zoom-fit').addEventListener('click', () => { if (!view3d) { zAuto = true; draw(); } });
   cv.addEventListener('wheel', e => {
     if (view3d) return;
     e.preventDefault();
+    zAuto = false;
     Z = Math.max(8, Math.min(30, Z - Math.sign(e.deltaY) * 2));
     draw();
   }, { passive: false });
+  window.addEventListener('resize', () => {
+    if ($('tab-circuit').classList.contains('active')) draw();
+  });
 
   const TOOL_FACTS = {
     none: '',
