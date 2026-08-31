@@ -105,8 +105,8 @@
       </div>
       <p id="net-hint" class="muted small" style="display:none">케이스를 펼친 전개도 위에 회로를 만들어요.<br>접는 선(보라 점선)을 넘어 테이프를 이어도 돼요.</p>
       <h3>부품</h3>
+      <p class="muted small">부품은 누르면 선택되고, 누른 채 끌면 옮겨져요.</p>
       <div id="circuit-tools" class="tools">
-        <button data-tool="select" class="active">선택·이동</button>
         <button data-tool="tape">전도성 테이프</button>
         <button data-tool="led">LED</button>
         <button data-tool="res" id="tool-res" style="display:none">저항</button>
@@ -118,8 +118,8 @@
         <button id="btn-circuit-reset">처음부터</button>
       </div>
       <p id="tool-fact" class="muted small"></p>
-      <p id="tape-hint" class="muted small" style="display:none">클릭으로 점을 찍고,<br>더블클릭·Enter·[테이프 완료]로 끝내요.</p>
-      <button id="btn-tape-done" class="small-btn">테이프 완료</button>
+      <p id="tape-hint" class="muted small" style="display:none">연결점(파란 점)을 누르면 바로 이어져요.<br>빈 곳에서 끝내려면 Enter 또는 [테이프 완료].</p>
+      <button id="btn-tape-done" class="small-btn" style="display:none">테이프 완료</button>
       <div class="tool-row">
         <button id="btn-3d" class="wide-btn">입체로 보기</button>
       </div>
@@ -127,41 +127,6 @@
         <label class="small">확대</label>
         <button id="zoom-out" class="small-btn">−</button>
         <button id="zoom-in" class="small-btn">+</button>
-      </div>
-      <div id="led-props" class="props" style="display:none">
-        <h4>선택한 부품</h4>
-        <button id="btn-led-rot">방향 돌리기 (R)</button>
-        <div id="holder-cells" style="display:none">
-          <label class="small">전지 개수 (전압)</label>
-          <div class="cell-btns">
-            <button data-n="1">1개<br><span class="small">1.5V</span></button>
-            <button data-n="2">2개<br><span class="small">3V</span></button>
-            <button data-n="3">3개<br><span class="small">4.5V</span></button>
-            <button data-n="4">4개<br><span class="small">6V</span></button>
-          </div>
-        </div>
-        <div id="led-kind" style="display:none">
-          <label class="small">LED 종류 (심화)</label>
-          <div class="cell-btns">
-            <button data-k="white">백색</button>
-            <button data-k="red" style="background:#fde3e3">빨강</button>
-            <button data-k="yellow" style="background:#fdf3d0">노랑</button>
-            <button data-k="green" style="background:#dff5e4">초록</button>
-            <button data-k="blue" style="background:#dfe9fb">파랑</button>
-          </div>
-        </div>
-        <div id="magic-wrap">
-          <p class="small muted">긴 다리(+)가 어느 줄에 닿는지 확인!</p>
-          <label class="small">머리 매직 색칠</label>
-          <div id="magic-palette">
-            <button data-c="none" style="background:#f5f0dc">없음</button>
-            <button data-c="yellow" style="background:#f5dc5a">노랑</button>
-            <button data-c="green" style="background:#7ed88a">초록</button>
-            <button data-c="red" style="background:#ee7777">빨강</button>
-            <button data-c="blue" style="background:#7aa3e8">파랑</button>
-            <button data-c="black" style="background:#555;color:#fff">검정</button>
-          </div>
-        </div>
       </div>
       <div id="circuit-predict-row" class="predict-box">
         <label>몇 개가 켜질까요?</label>
@@ -171,7 +136,10 @@
       <button id="btn-test" class="primary big">스위치 켜기</button>
     </aside>
     <div class="panel-center scrollable">
-      <canvas id="circuit-canvas"></canvas>
+      <div id="circuit-wrap">
+        <canvas id="circuit-canvas"></canvas>
+        <div id="float-props" class="hidden"></div>
+      </div>
     </div>
     <aside class="panel-right">
       <div id="circuit-info"></div>

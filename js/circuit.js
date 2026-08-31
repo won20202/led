@@ -35,7 +35,7 @@ export const MAGIC = {
   black: { label: '검정', f: 0.02, rgb: [80, 80, 80] },
 };
 
-let cv, ctx, tool = 'select';
+let cv, ctx, tool = 'none'; // 'none' = 기본(누르면 선택, 끌면 이동)
 let mode = 'lab';          // 'lab' = 회로 실험실(빈 화면) | 'placard' = 플래카드 전개도
 let view3d = false;
 let Z = 15;
@@ -747,22 +747,6 @@ function draw() {
     ctx.stroke();
   });
 
-  // 선택된 부품 옆에 회전 버튼 (LED·저항·건전지 홀더)
-  const selObj = selected && (
-    selected.type === 'led' ? C.leds[selected.i] :
-    selected.type === 'res' ? C.resistors[selected.i] :
-    selected.type === 'holder' ? C.holders[selected.i] : null);
-  if (selObj) {
-    const off = selected.type === 'holder' ? 3.4 : 1.1;
-    const bx = (selObj.x + off) * Z, by = (selObj.y - off) * Z;
-    ctx.beginPath(); ctx.arc(bx, by, 11, 0, 7);
-    ctx.fillStyle = '#4a6cf0'; ctx.fill();
-    ctx.fillStyle = '#fff'; ctx.font = 'bold 13px sans-serif'; ctx.textAlign = 'center';
-    ctx.fillText('↻', bx, by + 4.5);
-    ctx.textAlign = 'left';
-    cv._rotBtn = { x: selObj.x + off, y: selObj.y - off };
-  } else cv._rotBtn = null;
-
   ctx.restore();
 }
 
@@ -905,8 +889,6 @@ function inHolderBody(p, h) {
 }
 function hitTest(p) {
   const C = am();
-  // 회전 버튼
-  if (cv._rotBtn && Math.hypot(p.x - cv._rotBtn.x, p.y - cv._rotBtn.y) < 0.85) return { type: 'rotate' };
   for (let hi = C.holders.length - 1; hi >= 0; hi--) {
     const h = C.holders[hi];
     const g = holderGeom(h);
@@ -995,7 +977,7 @@ function setCircuitMode(m) {
   $('circuit-predict-row').style.display = (m === 'placard' && config.askPredict) ? '' : 'none';
   $('lab-guide').style.display = m === 'lab' ? '' : 'none';
   $('net-hint').style.display = m === 'placard' ? '' : 'none';
-  updateSelPanel();
+  updateFloatProps();
   updateSwitchButton();
   resolveAndDraw();
 }
@@ -1017,7 +999,7 @@ function set3D(on) {
   $('btn-3d').classList.toggle('active', on);
   $('btn-3d').textContent = on ? '평면(전개도)으로 돌아가기' : '입체로 보기';
   drawingTape = null; selected = null;
-  updateSelPanel();
+  updateFloatProps();
   resolveAndDraw();
 }
 
@@ -1037,23 +1019,29 @@ export function initCircuit() {
   }, { passive: false });
 
   const TOOL_FACTS = {
-    select: '',
-    tape: '전도성 테이프 — 은이 섞인 천이라 전기가 통해요. 겹치면 이어지고, 끊어지면 전류도 멈춰요. 접는 선을 넘어 이어 붙여도 돼요.',
-    led: 'LED — 긴 다리가 (+)극. 실제로는 다리를 "ㄴ"자로 눕혀야 테이프에 잘 붙어요.',
-    res: '저항 — 전류를 알맞게 줄여 LED가 뜨거워지지 않게 지켜 줘요.',
-    holder: '건전지 홀더 — AA 2개(3V)가 들어가요. +/− 전선을 회로에 연결하고, 홀더의 스위치를 켜야 전류가 흘러요.',
-    erase: '',
+    none: '',
+    tape: '전도성 테이프 — 전기가 지나는 길. 파란 연결점을 누르면 바로 이어져요.',
+    led: 'LED — 긴 다리가 (+)극. 빈 곳을 눌러 놓으세요.',
+    res: '저항 — 전류를 알맞게 줄여 LED를 지켜 줘요.',
+    holder: '건전지 홀더 — 위쪽 (−)(+) 단자에 테이프를 이으세요. 누를 때마다 하나씩 생겨요.',
+    erase: '지우개 — 지울 부품이나 테이프를 누르세요.',
   };
+  function setTool(t) {
+    tool = t;
+    drawingTape = null;
+    if (view3d && t !== 'none') set3D(false);
+    document.querySelectorAll('#circuit-tools button[data-tool]').forEach(x =>
+      x.classList.toggle('active', x.dataset.tool === t));
+    $('tape-hint').style.display = t === 'tape' ? '' : 'none';
+    $('btn-tape-done').style.display = t === 'tape' ? '' : 'none';
+    $('tool-fact').textContent = TOOL_FACTS[t] || '';
+    updateFloatProps();
+    resolveAndDraw();
+  }
   document.querySelectorAll('#circuit-tools button[data-tool]').forEach(b => {
     b.addEventListener('click', () => {
-      tool = b.dataset.tool;
-      drawingTape = null; selected = null;
-      if (view3d) set3D(false);
-      document.querySelectorAll('#circuit-tools button[data-tool]').forEach(x => x.classList.toggle('active', x === b));
-      $('tape-hint').style.display = tool === 'tape' ? '' : 'none';
-      $('tool-fact').textContent = TOOL_FACTS[tool] || '';
-      updateSelPanel();
-      resolveAndDraw();
+      selected = null;
+      setTool(tool === b.dataset.tool ? 'none' : b.dataset.tool); // 다시 누르면 해제
     });
   });
 
@@ -1063,10 +1051,9 @@ export function initCircuit() {
     const p = toCm(e);
     const C = am();
     normalize(C);
-    // 스위치·회전 버튼은 어떤 도구에서든 동작
+    // 스위치는 어떤 도구에서든 동작
     const pre = hitTest(p);
     if (pre && pre.type === 'switch') { toggleSwitch(pre.hi); return; }
-    if (pre && pre.type === 'rotate' && tool === 'select') { rotateSelected(); return; }
 
     if (tool === 'tape') {
       // 연결점(LED 다리·홀더 단자 등) 근처면 정확히 그 점에 스냅.
@@ -1077,33 +1064,6 @@ export function initCircuit() {
       drawingTape.push(pt);
       if (sn && drawingTape.length >= 2) { finishTape(); return; }
       draw();
-      return;
-    }
-    if (tool === 'led') {
-      if (C.leds.length >= config.ledCount && config.overLimit === 'block') return;
-      pushUndo();
-      C.leds.push({ ...clampPart({ x: snap(p.x), y: snap(p.y) }, 0), dir: 0, color: 'none' });
-      selected = { type: 'led', i: C.leds.length - 1 };
-      C.tested = false; afterChange();
-      return;
-    }
-    if (tool === 'res') {
-      pushUndo();
-      C.resistors.push({ ...clampPart({ x: snap(p.x), y: snap(p.y) }, 0), dir: 0 });
-      selected = { type: 'res', i: C.resistors.length - 1 };
-      C.tested = false; afterChange();
-      return;
-    }
-    if (tool === 'holder') {
-      // 홀더는 여러 개 만들 수 있다 — 클릭할 때마다 새로 놓임
-      pushUndo();
-      C.holders.push({
-        ...clampNet({ x: snap(p.x), y: snap(p.y) }),
-        dir: 0, cells: 2, on: false,
-        wires: [{ dock: true }, { dock: true }],
-      });
-      selected = { type: 'holder', i: C.holders.length - 1 };
-      syncTested(C); afterChange();
       return;
     }
     if (tool === 'erase') {
@@ -1119,9 +1079,34 @@ export function initCircuit() {
       }
       return;
     }
+    // 배치 도구: 빈 곳이면 놓고, 부품 위면 그 부품을 선택 (놓은 뒤엔 바로 이동·옵션 가능)
+    if ((tool === 'led' || tool === 'res' || tool === 'holder') && !pre) {
+      pushUndo();
+      if (tool === 'led') {
+        if (C.leds.length >= config.ledCount && config.overLimit === 'block') return;
+        C.leds.push({ ...clampPart({ x: snap(p.x), y: snap(p.y) }, 0), dir: 0, color: 'none' });
+        selected = { type: 'led', i: C.leds.length - 1 };
+      } else if (tool === 'res') {
+        C.resistors.push({ ...clampPart({ x: snap(p.x), y: snap(p.y) }, 0), dir: 0 });
+        selected = { type: 'res', i: C.resistors.length - 1 };
+      } else {
+        C.holders.push({
+          ...clampNet({ x: snap(p.x), y: snap(p.y) }),
+          dir: 0, cells: 2, on: false,
+          wires: [{ dock: true }, { dock: true }],
+        });
+        selected = { type: 'holder', i: C.holders.length - 1 };
+      }
+      C.tested = false; syncTested(C);
+      setTool('none'); // 놓자마자 선택 상태 — 바로 끌어서 옮기거나 옵션 조작
+      afterChange();
+      return;
+    }
+    // 기본: 누르면 선택, 누른 채 끌면 이동
     const hit = pre;
     selected = hit && ['led', 'res', 'tape', 'wire', 'holder'].includes(hit.type) ? hit : null;
-    updateSelPanel();
+    if (tool !== 'none' && selected) setTool('none');
+    updateFloatProps();
     if (selected) {
       cv.setPointerCapture(e.pointerId);
       pushUndo(); // 드래그 시작 전 상태 저장
@@ -1161,7 +1146,7 @@ export function initCircuit() {
       const dx = snap(p.x - dragOff.x), dy = snap(p.y - dragOff.y);
       C.tapes[selected.i].pts = dragOff.pts.map(q => clampNet({ x: q.x + dx, y: q.y + dy }));
     }
-    C.tested = false;
+    positionFloat(); // 옵션 카드가 부품을 따라간다
     draw();
   });
 
@@ -1189,17 +1174,6 @@ export function initCircuit() {
   });
   $('btn-tape-done').addEventListener('click', finishTape);
 
-  document.querySelectorAll('#magic-palette button').forEach(b => {
-    b.addEventListener('click', () => {
-      if (selected && selected.type === 'led' && !readOnly) {
-        pushUndo();
-        am().leds[selected.i].color = b.dataset.c;
-        am().tested = false; afterChange();
-      }
-    });
-  });
-  $('btn-led-rot').addEventListener('click', rotateSelected);
-
   $('in-predict-led').addEventListener('input', () => {
     am().predictCount = $('in-predict-led').value;
     touch(); updateSwitchButton();
@@ -1208,26 +1182,6 @@ export function initCircuit() {
   $('btn-undo').addEventListener('click', doUndo);
   document.querySelectorAll('#circ-mode button').forEach(b =>
     b.addEventListener('click', () => setCircuitMode(b.dataset.cm)));
-  // LED 종류 선택 (심화 모드)
-  document.querySelectorAll('#led-kind button').forEach(b =>
-    b.addEventListener('click', () => {
-      if (!selected || selected.type !== 'led' || readOnly) return;
-      pushUndo();
-      const l = am().leds[selected.i];
-      l.kind = b.dataset.k;
-      if (l.kind !== 'white') l.color = 'none'; // 매직 색칠은 백색 전용
-      am().tested = false;
-      afterChange();
-    }));
-  // 전지 개수 선택 (실험실에서 홀더 선택 시)
-  document.querySelectorAll('#holder-cells button').forEach(b =>
-    b.addEventListener('click', () => {
-      const C = am();
-      if (readOnly || !selected || selected.type !== 'holder' || !C.holders[selected.i]) return;
-      pushUndo();
-      C.holders[selected.i].cells = +b.dataset.n;
-      afterChange();
-    }));
   $('btn-circuit-reset').addEventListener('click', () => {
     if (readOnly) return;
     if (!confirm('회로를 처음 상태로 되돌릴까요? (실행 취소로 복구할 수 있어요)')) return;
@@ -1252,33 +1206,112 @@ function finishTape() {
 }
 
 function afterChange() {
+  // 플래카드(수행)에서는 배치를 바꾸면 스위치가 꺼진다 — 예측을 다시 하고 켜야 함
+  if (mode === 'placard') am().holders.forEach(h => h.on = false);
+  syncTested(am());
   touch();
   updateSwitchButton();
   updateUndoBtn();
-  updateSelPanel();
+  updateFloatProps();
   resolveAndDraw();
 }
-function updateSelPanel() {
-  const led = selected && selected.type === 'led';
-  const rot = selected && (selected.type === 'led' || selected.type === 'res' || selected.type === 'holder');
-  $('led-props').style.display = rot ? '' : 'none';
-  // LED 종류(심화)와 매직 색칠(백색 전용)
-  const kind = led ? (am().leds[selected.i].kind || 'white') : 'white';
-  $('led-kind').style.display = led && config.advanced ? '' : 'none';
-  if (led && config.advanced)
-    document.querySelectorAll('#led-kind button').forEach(b => b.classList.toggle('active', b.dataset.k === kind));
-  $('magic-wrap').style.display = led && kind === 'white' ? '' : 'none';
-  // 실험실에서 홀더를 선택하면 전지 개수(전압) 선택 표시
-  const holderSel = selected && selected.type === 'holder' && mode === 'lab' && am().holders[selected.i];
-  $('holder-cells').style.display = holderSel ? '' : 'none';
-  if (holderSel) {
-    const n = am().holders[selected.i].cells || 2;
-    document.querySelectorAll('#holder-cells button').forEach(b => b.classList.toggle('active', +b.dataset.n === n));
+
+// ---------- 선택한 부품 옆에 뜨는 옵션 카드 ----------
+function selObjPos() {
+  const C = am();
+  if (!selected) return null;
+  if (selected.type === 'led') return C.leds[selected.i];
+  if (selected.type === 'res') return C.resistors[selected.i];
+  if (selected.type === 'holder') return C.holders[selected.i];
+  if (selected.type === 'wire') {
+    const h = C.holders[selected.hi];
+    return h && !h.wires[selected.wi].dock ? h.wires[selected.wi] : h;
   }
-  if (led) {
-    const c = am().leds[selected.i].color || 'none';
-    document.querySelectorAll('#magic-palette button').forEach(b => b.classList.toggle('active', b.dataset.c === c));
+  if (selected.type === 'tape') {
+    const t = C.tapes[selected.i];
+    return t ? t.pts[Math.floor(t.pts.length / 2)] : null;
   }
+  return null;
+}
+function positionFloat() {
+  const el = $('float-props');
+  if (el.classList.contains('hidden')) return;
+  const o = selObjPos();
+  if (!o) return;
+  const { ox, oy } = origin();
+  const scale = cv.clientWidth ? cv.clientWidth / cv.width : 1;
+  const px = (o.x + ox) * Z * scale, py = (o.y + oy) * Z * scale;
+  let left = px - el.offsetWidth / 2;
+  let top = py - el.offsetHeight - 16;
+  left = Math.max(4, Math.min(left, cv.clientWidth - el.offsetWidth - 4));
+  if (top < 4) top = py + 34; // 위가 좁으면 아래에
+  el.style.left = left + 'px';
+  el.style.top = top + 'px';
+}
+function deleteSelected() {
+  const C = am();
+  if (!selected || readOnly) return;
+  pushUndo();
+  if (selected.type === 'led') C.leds.splice(selected.i, 1);
+  else if (selected.type === 'res') C.resistors.splice(selected.i, 1);
+  else if (selected.type === 'tape') C.tapes.splice(selected.i, 1);
+  else if (selected.type === 'wire') C.holders[selected.hi].wires[selected.wi] = { dock: true };
+  else if (selected.type === 'holder') C.holders.splice(selected.i, 1);
+  selected = null;
+  afterChange();
+}
+function updateFloatProps() {
+  const el = $('float-props');
+  const C = am();
+  const o = selected && selObjPos();
+  if (!o || view3d || readOnly || drawingTape) { el.classList.add('hidden'); return; }
+  let html = '';
+  if (selected.type === 'led') {
+    const l = C.leds[selected.i];
+    html += `<button class="fp fp-rot">회전</button>`;
+    if (config.advanced) {
+      html += `<span class="fp-sep"></span>` + Object.entries(KINDS).map(([k, v]) =>
+        `<button class="fp fp-kind ${(l.kind || 'white') === k ? 'on' : ''}" data-k="${k}">${v.label}</button>`).join('');
+    }
+    if ((l.kind || 'white') === 'white') {
+      html += `<span class="fp-sep"></span><span class="fp-label">색칠</span>` + Object.entries(MAGIC).map(([c, v]) =>
+        `<button class="fp fp-color ${(l.color || 'none') === c ? 'on' : ''}" data-c="${c}"
+           style="background:rgb(${v.rgb.join(',')})" title="${v.label}"></button>`).join('');
+    }
+    html += `<span class="fp-sep"></span><button class="fp fp-del">삭제</button>`;
+  } else if (selected.type === 'res') {
+    html += `<button class="fp fp-rot">회전</button><button class="fp fp-del">삭제</button>`;
+  } else if (selected.type === 'holder') {
+    const h = C.holders[selected.i];
+    html += `<button class="fp fp-rot">회전</button>`;
+    if (mode === 'lab') {
+      html += `<span class="fp-sep"></span><span class="fp-label">전지</span>` + [1, 2, 3, 4].map(nn =>
+        `<button class="fp fp-cell ${(h.cells || 2) === nn ? 'on' : ''}" data-n="${nn}">${nn}개<small>${(nn * 1.5).toFixed(1)}V</small></button>`).join('');
+    }
+    html += `<span class="fp-sep"></span><button class="fp fp-del">삭제</button>`;
+  } else {
+    html += `<button class="fp fp-del">삭제</button>`;
+  }
+  el.innerHTML = html;
+  el.classList.remove('hidden');
+  const rot = el.querySelector('.fp-rot');
+  if (rot) rot.addEventListener('click', rotateSelected);
+  const del = el.querySelector('.fp-del');
+  if (del) del.addEventListener('click', deleteSelected);
+  el.querySelectorAll('.fp-color').forEach(b => b.addEventListener('click', () => {
+    pushUndo(); C.leds[selected.i].color = b.dataset.c; afterChange();
+  }));
+  el.querySelectorAll('.fp-kind').forEach(b => b.addEventListener('click', () => {
+    pushUndo();
+    const l = C.leds[selected.i];
+    l.kind = b.dataset.k;
+    if (l.kind !== 'white') l.color = 'none';
+    afterChange();
+  }));
+  el.querySelectorAll('.fp-cell').forEach(b => b.addEventListener('click', () => {
+    pushUndo(); C.holders[selected.i].cells = +b.dataset.n; afterChange();
+  }));
+  positionFloat();
 }
 
 export function refreshCircuit() {

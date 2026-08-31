@@ -203,6 +203,23 @@ button.link:hover { color: #4a5561; background: transparent; }
 .mat-tip { color: #7a5f14 !important; background: #fdf6dd; border-radius: 6px; padding: 4px 6px !important; margin-top: 6px !important; }
 #tool-fact { margin-top: 8px; line-height: 1.5; min-height: 0; }
 
+/* 선택한 부품 옆에 뜨는 옵션 카드 */
+#circuit-wrap { position: relative; display: inline-block; }
+#float-props {
+  position: absolute; z-index: 10;
+  display: flex; align-items: center; gap: 4px; flex-wrap: wrap; max-width: 340px;
+  background: #fff; border: 1px solid #ccd4e2; border-radius: 10px;
+  padding: 6px 8px; box-shadow: 0 4px 14px rgba(30,50,90,0.18);
+}
+#float-props .fp { font-size: 12px; padding: 4px 8px; border-radius: 8px; }
+#float-props .fp.on { outline: 2px solid var(--accent); }
+#float-props .fp-color { width: 22px; height: 22px; padding: 0; border-radius: 50%; border: 1px solid rgba(0,0,0,0.2); }
+#float-props .fp-cell { line-height: 1.1; }
+#float-props .fp-cell small { display: block; font-size: 9px; opacity: 0.7; }
+#float-props .fp-del { color: #c0392b; }
+#float-props .fp-sep { width: 1px; height: 18px; background: var(--line); margin: 0 2px; }
+#float-props .fp-label { font-size: 11px; color: var(--muted); }
+
 /* 관리자 진입 버튼 */
 .admin-entry { margin-top: 16px; font-size: 12px; color: #5a6474; border-color: #d8dee8; }
 #header-admin { margin: 0; font-size: 12px; }
