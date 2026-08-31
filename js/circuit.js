@@ -1139,7 +1139,7 @@ export function initCircuit() {
         selected = { type: 'holder', i: C.holders.length - 1 };
       }
       C.tested = false; syncTested(C);
-      setTool('none'); // 놓자마자 선택 상태 — 바로 끌어서 옮기거나 옵션 조작
+      // 도구는 그대로 유지 — 계속 눌러서 여러 개 추가. (기존 부품을 누르면 선택 모드로 전환)
       afterChange();
       return;
     }
@@ -1311,6 +1311,7 @@ function deleteSelected() {
   selected = null;
   afterChange();
 }
+const TRASH_ICON = `<svg width="13" height="14" viewBox="0 0 13 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M1 3.5h11M4.5 3.5V2a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v1.5M2.5 3.5l.6 8.5a1 1 0 0 0 1 .9h4.8a1 1 0 0 0 1-.9l.6-8.5M5 6v4M8 6v4"/></svg>`;
 function updateFloatProps() {
   const el = $('float-props');
   const C = am();
@@ -1332,9 +1333,9 @@ function updateFloatProps() {
             style="background:rgb(${v.rgb.join(',')})" title="${v.label}"></button>`;
         }).join('') + `</span>`;
     }
-    html += `<span class="fp-sep"></span><button class="fp fp-del">삭제</button>`;
+    html += `<span class="fp-sep"></span><button class="fp fp-del" title="삭제 (Delete)">${TRASH_ICON}</button>`;
   } else if (selected.type === 'res') {
-    html += `<button class="fp fp-rot">회전</button><button class="fp fp-del">삭제</button>`;
+    html += `<button class="fp fp-rot">회전</button><button class="fp fp-del" title="삭제 (Delete)">${TRASH_ICON}</button>`;
   } else if (selected.type === 'holder') {
     const h = C.holders[selected.i];
     html += `<button class="fp fp-rot">회전</button>`;
@@ -1342,9 +1343,9 @@ function updateFloatProps() {
       html += `<span class="fp-sep"></span><span class="fp-label">전지</span>` + [1, 2, 3, 4].map(nn =>
         `<button class="fp fp-cell ${(h.cells || 2) === nn ? 'on' : ''}" data-n="${nn}">${nn}개<small>${(nn * 1.5).toFixed(1)}V</small></button>`).join('');
     }
-    html += `<span class="fp-sep"></span><button class="fp fp-del">삭제</button>`;
+    html += `<span class="fp-sep"></span><button class="fp fp-del" title="삭제 (Delete)">${TRASH_ICON}</button>`;
   } else {
-    html += `<button class="fp fp-del">삭제</button>`;
+    html += `<button class="fp fp-del" title="삭제 (Delete)">${TRASH_ICON}</button>`;
   }
   el.innerHTML = html;
   el.classList.remove('hidden');
