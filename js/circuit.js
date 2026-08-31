@@ -142,13 +142,14 @@ function rotV(px, py, dir) {
   const a = (dir || 0) * Math.PI / 2;
   return { x: px * Math.cos(a) - py * Math.sin(a), y: px * Math.sin(a) + py * Math.cos(a) };
 }
-const HOLDER_W = 3.4, HOLDER_H = 5.0; // 몸체 (dir 0 기준: 세로)
+const HOLDER_W = 4.4, HOLDER_H = 5.0; // 몸체 (dir 0 기준: 세로)
+// 단자 간격을 넉넉히(2.8cm) — 두 단자에서 나가는 테이프가 나란히 가도 서로 닿지 않게
 function holderGeom(h) {
   // 단자: 위쪽 좁은 면. 왼쪽 (−), 오른쪽 (+) — 실제 홀더·팅커캐드와 같은 배치
-  const tP = rotV(0.85, -HOLDER_H / 2 - 0.25, h.dir);   // (+)
-  const tM = rotV(-0.85, -HOLDER_H / 2 - 0.25, h.dir);  // (−)
-  const dP = rotV(0.85, -HOLDER_H / 2 - 1.0, h.dir);
-  const dM = rotV(-0.85, -HOLDER_H / 2 - 1.0, h.dir);
+  const tP = rotV(1.4, -HOLDER_H / 2 - 0.25, h.dir);   // (+)
+  const tM = rotV(-1.4, -HOLDER_H / 2 - 0.25, h.dir);  // (−)
+  const dP = rotV(1.4, -HOLDER_H / 2 - 1.0, h.dir);
+  const dM = rotV(-1.4, -HOLDER_H / 2 - 1.0, h.dir);
   const sw = rotV(0, HOLDER_H / 2 - 0.75, h.dir);
   return {
     t: [{ x: h.x + tP.x, y: h.y + tP.y }, { x: h.x + tM.x, y: h.y + tM.y }], // [0]=+, [1]=−
@@ -321,27 +322,37 @@ function solveInner(C, lab, forceOn) {
   const union = (a, b) => { parent[find(a)] = find(b); };
 
   const samples = C.tapes.map(sampleTape3D);
+  // 테이프끼리는 폭(0.5cm)만큼 겹쳐야 닿은 것 — 나란히 지나가는 두 줄은 안전
+  const bridges = []; // 테이프끼리 닿은 지점 (실험실 합선 표시용)
   for (let i = 0; i < n; i++)
     for (let j = i + 1; j < n; j++) {
-      let hit = false;
+      let hitAt = null;
       for (const a of samples[i]) {
-        for (const b of samples[j]) if (d3(a, b) < 0.65) { hit = true; break; }
-        if (hit) break;
+        for (const b of samples[j]) if (d3(a, b) < 0.5) { hitAt = a; break; }
+        if (hitAt) break;
       }
-      if (hit) union(i, j);
+      if (hitAt) {
+        if (find(i) !== find(j)) bridges.push({ x: hitAt.X, y: hitAt.Y }); // lab에서는 X,Y가 화면 좌표
+        union(i, j);
+      }
     }
 
-  const res = { short: false, on: C.tested, noHolder: H === 0, unconnected: 0,
+  const res = { short: false, on: C.tested, noHolder: H === 0, unconnected: 0, bridges,
     lit: {}, over: new Set(), burnt: new Set(), iOf: {},
     voltage: lab ? ((C.holders[0] && C.holders[0].cells) || 2) * 1.5 : config.voltage,
     tapeComp: C.tapes.map((_, i) => find(i)), energizedPlus: new Set(), energizedMinus: new Set(),
     hasBlockedSeries: false, dimSeries: false, noResistorLit: false, anyLit: false };
   if (!H) return res;
 
+  // 가장 가까운 테이프에 붙는다 (스치듯 지나가는 다른 줄에 잘못 붙지 않게)
   const tapeNear3D = (p3) => {
+    let best = -1, bd = 0.7;
     for (let i = 0; i < n; i++)
-      for (const s of samples[i]) if (d3(p3, s) < 0.7) return i;
-    return -1;
+      for (const s of samples[i]) {
+        const dd = d3(p3, s);
+        if (dd < bd) { bd = dd; best = i; }
+      }
+    return best;
   };
   // 홀더 단자·전선 끝을 테이프와 연결 (단자에 테이프를 바로 붙여도 된다)
   const poles = []; // {hi, pole, p3} — 다리 직접 접촉 판정용
@@ -690,6 +701,17 @@ function draw() {
 
   C.holders.forEach((h, hi) => drawHolder(h, hi));
 
+  // 실험실에서 합선이면 테이프가 서로 닿은 지점을 표시 — 학생이 스스로 찾게 (수행용 전개도에서는 표시 안 함)
+  if (mode === 'lab' && R && R.short && C.tested) {
+    (R.bridges || []).forEach(b => {
+      ctx.beginPath(); ctx.arc(b.x * Z, b.y * Z, 8, 0, 7);
+      ctx.fillStyle = 'rgba(230,60,60,0.25)'; ctx.fill();
+      ctx.strokeStyle = '#e23c3c'; ctx.lineWidth = 2; ctx.stroke();
+      ctx.beginPath(); ctx.arc(b.x * Z, b.y * Z, 2.5, 0, 7);
+      ctx.fillStyle = '#e23c3c'; ctx.fill();
+    });
+  }
+
   // 연결점 표시 — 테이프 도구일 때 뚜렷하게, 커서가 가까우면 크게
   if (!litMode || tool === 'tape') {
     const sn = tool === 'tape' && cursor ? snapToTerminal(cursor, C) : null;
@@ -829,7 +851,7 @@ function drawHolder(h, hi) {
   ctx.lineWidth = isSel ? 2.5 : 2;
   ctx.beginPath(); ctx.roundRect(-hw / 2 * Z, -hh / 2 * Z, hw * Z, hh * Z, 6); ctx.fill(); ctx.stroke();
   // 단자 (위쪽 좁은 면: 왼쪽 −, 오른쪽 +)
-  [[-0.85, '#2f3640'], [0.85, '#d64545']].forEach(([tx, col]) => {
+  [[-1.4, '#2f3640'], [1.4, '#d64545']].forEach(([tx, col]) => {
     ctx.fillStyle = col;
     ctx.beginPath(); ctx.roundRect((tx - 0.22) * Z, (-hh / 2 - 0.45) * Z, 0.44 * Z, 0.5 * Z, 2); ctx.fill();
   });
@@ -874,7 +896,8 @@ function updatePanel() {
   if (mode === 'placard' && C.leds.length > config.ledCount)
     html += `<p class="hint">실제로 지급되는 LED는 ${config.ledCount}개예요. 배치를 참고로 실험하는 건 자유!</p>`;
   if (R.noHolder) html += '<p class="muted">건전지 홀더를 놓고, 홀더의 (+)(−) 단자에서 테이프를 그어 LED 다리에 연결해 보세요.</p>';
-  else if (R.short) html += '<p class="warn">전지가 뜨거워집니다! (+)와 (−)가 어딘가에서 직접 만나고 있습니다.</p>';
+  else if (R.short) html += '<p class="warn">전지가 뜨거워집니다! (+)와 (−)가 직접 만나는 합선이에요. 전도성 테이프는 겹치거나 교차하면 서로 닿아요 — 두 줄이 만나지 않게 떨어뜨리거나 돌아가게 붙여 보세요.' +
+    (mode === 'lab' ? ' <b>빨간 동그라미</b>가 테이프끼리 닿은 지점이에요.' : '') + '</p>';
   else if (C.tested) {
     const litN = Object.keys(R.lit).length;
     html += `<p class="measure">점등 결과 — LED ${C.leds.length}개 중 <b>${litN}개</b> 켜짐</p>`;
@@ -1168,8 +1191,13 @@ export function initCircuit() {
     if (poweredOn()) return;
 
     if (tool === 'tape') {
-      const sn = snapToTerminal(p, C);
+      let sn = snapToTerminal(p, C);
       // 그리는 중이 아닐 때 부품 몸체를 누르면, 도구를 유지한 채 선택·이동 (연결점은 예외)
+      // 스냅점보다 부품 중심에 더 가까우면 '몸통을 잡은 것' — 이동 의도로 본다
+      if (!drawingTape && sn && pre && (pre.type === 'led' || pre.type === 'res')) {
+        const o = (pre.type === 'led' ? C.leds : C.resistors)[pre.i];
+        if (o && Math.hypot(p.x - o.x, p.y - o.y) < Math.hypot(p.x - sn.x, p.y - sn.y)) sn = null;
+      }
       if (!drawingTape && !sn && pre && ['led', 'res', 'holder', 'wire'].includes(pre.type)) {
         selected = pre;
         updateFloatProps();
@@ -1178,23 +1206,27 @@ export function initCircuit() {
         return;
       }
       // 연결점(LED 다리·홀더 단자 등) 근처면 정확히 그 점에 스냅.
-      // 이미 그리는 중일 때 연결점을 클릭하면 한 번 클릭으로 바로 연결·완료된다.
+      // 그리는 중에 연결점이나 기존 테이프 위를 클릭하면 한 번 클릭으로 바로 연결·완료된다.
       const pt = sn ? { x: sn.x, y: sn.y } : clampNet({ x: snap(p.x), y: snap(p.y) });
+      const onTape = !sn && drawingTape && drawingTape.length >= 1 &&
+        C.tapes.some(t => distTape2D(pt, t) < 0.4);
       if (!drawingTape) drawingTape = [];
       drawingTape.push(pt);
-      if (sn && drawingTape.length >= 2) { finishTape(); return; }
+      if ((sn || onTape) && drawingTape.length >= 2) { finishTape(); return; }
       draw();
       return;
     }
     // 배치 도구: 빈 곳이면 놓고, 부품 위면 그 부품을 선택 (놓은 뒤엔 바로 이동·옵션 가능)
     if ((tool === 'led' || tool === 'res' || tool === 'holder') && !pre) {
       pushUndo();
+      // 실험실은 홀더 단자가 좌우라 LED도 가로 방향이 자연스럽다 (플래카드는 가로 두 줄 사이 세로)
+      const defDir = mode === 'lab' ? 1 : 0;
       if (tool === 'led') {
         if (C.leds.length >= config.ledCount && config.overLimit === 'block') return;
-        C.leds.push({ ...clampPart({ x: snap(p.x), y: snap(p.y) }, 0), dir: 0, color: 'none' });
+        C.leds.push({ ...clampPart({ x: snap(p.x), y: snap(p.y) }, defDir), dir: defDir, color: 'none' });
         selected = { type: 'led', i: C.leds.length - 1 };
       } else if (tool === 'res') {
-        C.resistors.push({ ...clampPart({ x: snap(p.x), y: snap(p.y) }, 0), dir: 0 });
+        C.resistors.push({ ...clampPart({ x: snap(p.x), y: snap(p.y) }, defDir), dir: defDir });
         selected = { type: 'res', i: C.resistors.length - 1 };
       } else {
         C.holders.push({
