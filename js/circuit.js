@@ -963,6 +963,49 @@ function hitTest(p) {
   return null;
 }
 
+// ---- 부품에 붙은 테이프 끝점이 부품을 따라오게 ----
+function partTerminals(sel) {
+  const C = am();
+  if (!sel) return null;
+  if (sel.type === 'led' || sel.type === 'res') {
+    const o = sel.type === 'led' ? C.leds[sel.i] : C.resistors[sel.i];
+    if (!o) return null;
+    const g = legs(o);
+    return { a: g.a, k: g.k };
+  }
+  if (sel.type === 'holder') {
+    const h = C.holders[sel.i];
+    if (!h) return null;
+    const g = holderGeom(h);
+    return { p: g.t[0], m: g.t[1] };
+  }
+  return null;
+}
+function captureAttach(sel) {
+  const terms = partTerminals(sel);
+  if (!terms) return [];
+  const C = am(), out = [];
+  C.tapes.forEach((t, ti) => {
+    [0, t.pts.length - 1].forEach(pi => {
+      const p = t.pts[pi];
+      for (const [role, tp] of Object.entries(terms)) {
+        if (Math.hypot(p.x - tp.x, p.y - tp.y) < 0.6) { out.push({ ti, pi, role }); return; }
+      }
+    });
+  });
+  return out;
+}
+function applyAttach(sel, list) {
+  if (!list || !list.length) return;
+  const terms = partTerminals(sel);
+  if (!terms) return;
+  const C = am();
+  list.forEach(a => {
+    const t = C.tapes[a.ti], tp = terms[a.role];
+    if (t && tp && t.pts[a.pi] !== undefined) t.pts[a.pi] = { x: tp.x, y: tp.y };
+  });
+}
+
 function rotateSelected() {
   const C = am();
   const o = selected && (
@@ -971,8 +1014,10 @@ function rotateSelected() {
     selected.type === 'holder' ? C.holders[selected.i] : null);
   if (o && !readOnly) {
     pushUndo();
+    const attach = captureAttach(selected); // 회전 전 연결 상태 기억
     o.dir = ((o.dir || 0) + 1) % 4;
     if (selected.type !== 'holder') Object.assign(o, clampPart(o, o.dir));
+    applyAttach(selected, attach);          // 붙어 있던 테이프 끝이 따라온다
     C.tested = false; afterChange();
   }
 }
@@ -1123,9 +1168,17 @@ export function initCircuit() {
     if (poweredOn()) return;
 
     if (tool === 'tape') {
+      const sn = snapToTerminal(p, C);
+      // 그리는 중이 아닐 때 부품 몸체를 누르면, 도구를 유지한 채 선택·이동 (연결점은 예외)
+      if (!drawingTape && !sn && pre && ['led', 'res', 'holder', 'wire'].includes(pre.type)) {
+        selected = pre;
+        updateFloatProps();
+        beginDrag(p, e);
+        draw();
+        return;
+      }
       // 연결점(LED 다리·홀더 단자 등) 근처면 정확히 그 점에 스냅.
       // 이미 그리는 중일 때 연결점을 클릭하면 한 번 클릭으로 바로 연결·완료된다.
-      const sn = snapToTerminal(p, C);
       const pt = sn ? { x: sn.x, y: sn.y } : clampNet({ x: snap(p.x), y: snap(p.y) });
       if (!drawingTape) drawingTape = [];
       drawingTape.push(pt);
@@ -1159,19 +1212,23 @@ export function initCircuit() {
     // 기본: 누르면 선택, 누른 채 끌면 이동
     const hit = pre;
     selected = hit && ['led', 'res', 'tape', 'wire', 'holder'].includes(hit.type) ? hit : null;
-    if (tool !== 'none' && selected) setTool('none');
+    if ((tool === 'led' || tool === 'res' || tool === 'holder') && selected) setTool('none');
     updateFloatProps();
-    if (selected) {
-      cv.setPointerCapture(e.pointerId);
-      pushUndo(); // 드래그 시작 전 상태 저장
-      if (selected.type === 'led') dragOff = { x: p.x - C.leds[selected.i].x, y: p.y - C.leds[selected.i].y };
-      else if (selected.type === 'res') dragOff = { x: p.x - C.resistors[selected.i].x, y: p.y - C.resistors[selected.i].y };
-      else if (selected.type === 'holder') dragOff = { x: p.x - C.holders[selected.i].x, y: p.y - C.holders[selected.i].y };
-      else if (selected.type === 'wire') dragOff = { x: 0, y: 0 };
-      else if (selected.type === 'tape') dragOff = { x: p.x, y: p.y, pts: C.tapes[selected.i].pts.map(q => ({ ...q })) };
-    }
+    if (selected) beginDrag(p, e);
     draw();
   });
+
+  // 선택된 부품의 드래그 준비 (붙어 있는 테이프 끝점도 함께 기억)
+  function beginDrag(p, e) {
+    const C = am();
+    cv.setPointerCapture(e.pointerId);
+    pushUndo(); // 드래그 시작 전 상태 저장
+    if (selected.type === 'led') dragOff = { x: p.x - C.leds[selected.i].x, y: p.y - C.leds[selected.i].y, attach: captureAttach(selected) };
+    else if (selected.type === 'res') dragOff = { x: p.x - C.resistors[selected.i].x, y: p.y - C.resistors[selected.i].y, attach: captureAttach(selected) };
+    else if (selected.type === 'holder') dragOff = { x: p.x - C.holders[selected.i].x, y: p.y - C.holders[selected.i].y, attach: captureAttach(selected) };
+    else if (selected.type === 'wire') dragOff = { x: 0, y: 0 };
+    else if (selected.type === 'tape') dragOff = { x: p.x, y: p.y, pts: C.tapes[selected.i].pts.map(q => ({ ...q })) };
+  }
 
   cv.addEventListener('pointermove', e => {
     geomLab = mode === 'lab';
@@ -1193,11 +1250,14 @@ export function initCircuit() {
     if (selected.type === 'led') {
       const l = C.leds[selected.i];
       Object.assign(l, clampPart({ x: snap(p.x - dragOff.x), y: snap(p.y - dragOff.y) }, l.dir));
+      applyAttach(selected, dragOff.attach); // 연결된 테이프 끝이 다리를 따라온다
     } else if (selected.type === 'res') {
       const r = C.resistors[selected.i];
       Object.assign(r, clampPart({ x: snap(p.x - dragOff.x), y: snap(p.y - dragOff.y) }, r.dir));
+      applyAttach(selected, dragOff.attach);
     } else if (selected.type === 'holder') {
       Object.assign(C.holders[selected.i], clampNet({ x: snap(p.x - dragOff.x), y: snap(p.y - dragOff.y) }));
+      applyAttach(selected, dragOff.attach);
     } else if (selected.type === 'wire') {
       const h = C.holders[selected.hi];
       // 홀더 몸체 위로 가져가면 전지에 도로 꽂힌다
