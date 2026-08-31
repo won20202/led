@@ -121,8 +121,10 @@ function collectTimetable() {
   if (target === 'base') config.timetable = tt;
   else {
     config.weekOverrides = config.weekOverrides || {};
-    // 기본과 같으면 수정본을 만들지 않는다
-    if (JSON.stringify(tt) === JSON.stringify(config.timetable)) delete config.weekOverrides[target];
+    // 기본과 같으면 수정본을 만들지 않는다 (빈 칸/누락 표현 차이는 무시하고 내용만 비교)
+    const norm = t => JSON.stringify([1, 2, 3, 4, 5].map(d =>
+      Array.from({ length: 7 }, (_, p) => (((t || {})[d] || [])[p] || '').trim())));
+    if (norm(tt) === norm(config.timetable)) delete config.weekOverrides[target];
     else config.weekOverrides[target] = tt;
   }
 }
@@ -169,9 +171,9 @@ function renderEntry() {
       <input id="ec-token" list="ec-token-list" placeholder="수업명 (예: 7, 2-7, 메이커반)" style="width:150px">
       <datalist id="ec-token-list">${allTokens().map(t => `<option value="${esc(t)}">`).join('')}</datalist>
       <select id="ec-p1">${perOpts}</select> ~ <select id="ec-p2">${perOpts}</select>
-      <span>→ 코드 <b id="ec-code" style="font-size:20px"></b></span>
-      <button id="ec-log-manual" class="small-btn">시트에 수업 기록</button>
+      <button id="ec-make" class="primary">코드 생성</button>
     </div>
+    <div id="ec-manual-out"></div>
     <p class="muted small">"반"이나 "학년-반" 수업은 그 반 학생만 통과합니다. 그룹 수업명(메이커반 등)은 [학생 관리]에서 그룹 명단을 등록하면 그 명단의 학생만 통과합니다. 그룹 수업 코드는 시간표에 적혀 있어야 동작해요.</p>
     <h4>미실시자 개인 코드 (결석·보충용)</h4>
     <div class="tool-row"><input id="ec-stu" placeholder="학번을 쉼표로: ${makeSid(3, 21)}, ${makeSid(5, 7)}" style="flex:1"><button id="ec-stu-btn">코드 만들기</button></div>
@@ -197,14 +199,22 @@ function renderEntry() {
     <button id="ec-p-add" class="small-btn">+ 교시 추가</button>
     <p class="muted small">바꿨으면 [수업 설정] 탭의 [설정 저장]을 누르고, 설정 코드로 다른 기기에도 배포하세요.</p>`;
 
-  const upd = () => {
+  // [코드 생성]을 눌러야 코드가 나온다 — 누르면 칠판에 적기 좋게 크게 표시
+  const makeManual = () => {
     let p1 = +$('ec-p1').value, p2 = +$('ec-p2').value;
     if (p2 < p1) { p2 = p1; $('ec-p2').value = String(p1); }
-    const tok = $('ec-token').value.trim() || '1';
-    $('ec-code').textContent = classSessionCode(tok, p1, p2);
+    const tok = $('ec-token').value.trim();
+    if (!tok) { $('ec-manual-out').innerHTML = '<p class="warn">수업명을 먼저 입력하세요 (예: 7, 2-7, 메이커반)</p>'; $('ec-token').focus(); return; }
+    $('ec-manual-out').innerHTML = `
+      <div class="measure tool-row" style="align-items:center">
+        <span>${tokenLabel(tok)} ${p1 + 1}${p2 > p1 ? '~' + (p2 + 1) : ''}교시 →</span>
+        <b style="font-size:32px">${classSessionCode(tok, p1, p2)}</b>
+        <button id="ec-log-manual" class="small-btn">시트에 수업 기록</button>
+      </div>`;
+    $('ec-log-manual').addEventListener('click', () => logLesson(tok, p1, p2));
   };
-  ['ec-token', 'ec-p1', 'ec-p2'].forEach(id => $(id).addEventListener('input', upd));
-  upd();
+  $('ec-make').addEventListener('click', makeManual);
+  $('ec-token').addEventListener('keydown', e => { if (e.key === 'Enter') makeManual(); });
 
   // 주차 이동
   const goto = (kind, off) => { collectTimetable(); entrySel = { kind, off }; renderEntry(); };
@@ -231,8 +241,8 @@ function renderEntry() {
     const r = runs[+b.dataset.i];
     logLesson(r.token, r.p1, r.p2);
   }));
-  $('ec-log-manual').addEventListener('click', () => logLesson($('ec-token').value.trim() || '1', +$('ec-p1').value, +$('ec-p2').value));
 
+  $('ec-stu').addEventListener('keydown', e => { if (e.key === 'Enter') $('ec-stu-btn').click(); });
   $('ec-stu-btn').addEventListener('click', () => {
     const list = $('ec-stu').value.split(',').map(s => s.trim()).filter(Boolean);
     $('ec-stu-list').innerHTML = list.map(s => {
@@ -411,11 +421,12 @@ function localWorks() {
   const out = [];
   for (let i = 0; i < localStorage.length; i++) {
     const k = localStorage.key(i);
-    const m = k && k.match(/^lps_work_(\d+)-(\d+)$/);
+    // 현재 키: lps_work_학년-반-번호, 옛 키: lps_work_반-번호
+    const m = k && k.match(/^lps_work_(?:(\d+)-)?(\d+)-(\d+)$/);
     if (m) {
       try {
         const w = JSON.parse(localStorage.getItem(k));
-        out.push({ ban: +m[1], num: +m[2], updated: w.updatedAt, w });
+        out.push({ grade: m[1] ? +m[1] : null, ban: +m[2], num: +m[3], id: k.slice('lps_work_'.length), updated: w.updatedAt, w });
       } catch (e) { /* ignore */ }
     }
   }
@@ -429,10 +440,10 @@ async function renderWorks() {
   let html = '<h4>이 기기에 저장된 작업</h4>';
   const loc = localWorks();
   html += loc.length
-    ? loc.map(r => `<div class="adm-work-row">${r.ban}반 ${r.num}번 <span class="muted">${r.updated ? new Date(r.updated).toLocaleString('ko-KR') : ''}</span>
-        <button class="w-open" data-id="local:${r.ban}-${r.num}">보기</button>
+    ? loc.map(r => `<div class="adm-work-row">${r.grade ? r.grade + '학년 ' : ''}${r.ban}반 ${r.num}번 <span class="muted">${r.updated ? new Date(r.updated).toLocaleString('ko-KR') : ''}</span>
+        <button class="w-open" data-id="local:${r.id}">보기</button>
         <button class="w-note" data-bn="${r.ban}:${r.num}">메모</button>
-        <button class="w-del" data-id="local:${r.ban}-${r.num}">삭제</button></div>`).join('')
+        <button class="w-del" data-id="local:${r.id}">삭제</button></div>`).join('')
     : '<p class="muted">없음</p>';
   html += '<h4>서버(Supabase)에 모인 작업</h4>';
   if (!config.supabaseUrl) {
@@ -789,8 +800,9 @@ function openReadOnly(w, label, cloudId) {
   $('login-modal').classList.add('hidden');
   $('app').classList.remove('hidden');
   $('readonly-banner').classList.remove('hidden');
-  $('readonly-banner').textContent = `관리자 열람 중 — ${label}` +
-    (cloudId ? ' (실시간 갱신)' : '') + ' · 편집 불가 · 나가려면 새로고침';
+  $('readonly-banner').innerHTML = `관리자 열람 중 — ${esc(label)}` +
+    (cloudId ? ' (실시간 갱신)' : '') + ' · 편집 불가 <button id="ro-exit" class="small-btn">관리자로 돌아가기</button>';
+  $('ro-exit').addEventListener('click', () => { location.search = '?admin=1'; });
   $('student-badge').textContent = label;
   document.dispatchEvent(new CustomEvent('work-loaded'));
   window.dispatchEvent(new Event('resize'));

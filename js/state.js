@@ -147,7 +147,10 @@ export function weekKeyOf(d = new Date()) {
   return `${m.getFullYear()}-${String(m.getMonth() + 1).padStart(2, '0')}-${String(m.getDate()).padStart(2, '0')}`;
 }
 export function timetableForWeek(wk) {
-  return (config.weekOverrides && config.weekOverrides[wk]) || config.timetable || { 1: [], 2: [], 3: [], 4: [], 5: [] };
+  const ov = config.weekOverrides && config.weekOverrides[wk];
+  // 내용이 전부 빈 수정본(과거 버그로 생김)은 무시하고 기본 시간표를 쓴다
+  const hasContent = ov && Object.values(ov).some(col => (col || []).some(t => t && String(t).trim()));
+  return (hasContent ? ov : null) || config.timetable || { 1: [], 2: [], 3: [], 4: [], 5: [] };
 }
 // 어떤 요일 열에서 연속된 같은 수업명을 묶는다 → [{token, p1, p2}]
 export function runsOf(col) {

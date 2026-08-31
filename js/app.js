@@ -12,12 +12,18 @@ import { initAdmin, openAdmin } from './admin.js';
 
 const $ = id => document.getElementById(id);
 
-function setupLogin() {
+// 설정(입장 방식·학번 자리수)이 바뀌면 로그인 화면도 따라 바뀌어야 한다
+function refreshLoginUI() {
   $('login-code-row').style.display = config.entryMode !== 'none' ? '' : 'none';
   // 학번 자리수는 학교 체계 설정을 따른다 (예: 반 2자리 20627, 반 1자리 2527)
   const example = makeSid(Math.min(6, config.banCount), 27);
   $('login-sid').placeholder = `학번 (예: ${example})`;
   $('login-sid').maxLength = sidLength();
+}
+
+function setupLogin() {
+  refreshLoginUI();
+  $('adm-close').addEventListener('click', refreshLoginUI); // 관리자에서 바꾸고 닫으면 즉시 반영
 
   try {
     const last = localStorage.getItem('lps_last_sid');
