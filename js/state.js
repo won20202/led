@@ -77,6 +77,9 @@ export const DEFAULT_CONFIG = {
   areaW: 23, areaH: 8,      // 도안 작업 영역
   strokeMin: 0.7,
   letterMin: 5, letterMax: 8, pictoMin: 4, pictoMax: 5,
+  dLetters: 2,      // 도안 글자 수 (한 글자씩 배치)
+  dDrawing: true,   // 그림 포함 여부
+  dFree: false,     // 자유 모드: 글자 수·크기 조건 없음, 글자 추가 자유
   showSupply: true, showMeasure: true, askPredict: true, questionFeedback: true,
   overLimit: 'warn',        // 'warn' | 'block'
   // 학교 기본 정보 — 해마다 바꿔 쓴다

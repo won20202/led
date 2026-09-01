@@ -16,6 +16,20 @@ let analysis = null;
 function D() { return work.design; }
 function drawing() { D().drawing = D().drawing || { strokes: [] }; return D().drawing; }
 
+// 글자 목록 — 한 글자당 한 요소. 관리자 설정(글자 수·자유 모드)에 맞춰 길이를 정규화한다.
+function newLetter(i) {
+  const ax = (config.frontW - config.areaW) / 2;
+  return { text: '', x: ax + 3 + (i % 6) * 3.5, y: config.frontH / 2, size: 6, stroke: 0.7 };
+}
+function letters() {
+  const d = D();
+  d.letters = d.letters || [];
+  const want = config.dFree ? Math.max(1, d.letters.length) : Math.max(1, config.dLetters || 2);
+  while (d.letters.length < want) d.letters.push(newLetter(d.letters.length));
+  if (!config.dFree && d.letters.length > want) d.letters.length = want;
+  return d.letters;
+}
+
 function drawLetter(c, scale, o) {
   if (!o.text) return;
   c.save();
@@ -48,9 +62,8 @@ function drawStrokes(c, scale, extra) {
   c.restore();
 }
 function drawAll(c, scale) {
-  drawLetter(c, scale, D().letters[0]);
-  drawLetter(c, scale, D().letters[1]);
-  drawStrokes(c, scale, null);
+  letters().forEach(l => drawLetter(c, scale, l));
+  if (config.dDrawing !== false) drawStrokes(c, scale, null);
 }
 
 // ---------- 래스터 분석: 안쪽 조각 + 잘라낼 둘레 + 요소 실측 크기 ----------
@@ -167,17 +180,17 @@ function analyze() {
     return cnt;
   };
 
-  const merged = [false, false];
-  for (let li = 0; li < 2; li++) {
-    const o = D().letters[li];
-    if (!o.text) { boxes.push(null); continue; }
+  const Ls = letters();
+  const merged = Ls.map(() => false);
+  Ls.forEach((o, li) => {
+    if (!o.text) { boxes.push(null); return; }
     const cur = raster(c2 => drawLetter(c2, RA, o));
     boxes.push(measure(cur));
     // 가는 획(기본 글꼴)으로 그렸을 때보다 안쪽 공간이 줄었으면 획이 붙은 것
     const thin = raster(c2 => drawLetter(c2, RA, { ...o, stroke: 0 }));
     merged[li] = islandsIn(thin) > islandsIn(cur);
-  }
-  boxes.push(drawing().strokes.length ? measure(raster(c2 => drawStrokes(c2, RA, null))) : null);
+  });
+  boxes.push(config.dDrawing !== false && drawing().strokes.length ? measure(raster(c2 => drawStrokes(c2, RA, null))) : null);
   return { cut, island, W, H, islandCount, perimeter, boxes, merged };
 }
 
@@ -218,9 +231,8 @@ function draw() {
   ctx.fillStyle = 'rgba(255,255,255,0.4)'; ctx.font = '11px sans-serif';
   ctx.fillText(`작업 영역 ${config.areaW}×${config.areaH}cm`, ax * S + 4, ay * S - 4);
 
-  drawLetter(ctx, S, D().letters[0]);
-  drawLetter(ctx, S, D().letters[1]);
-  drawStrokes(ctx, S, drawingStroke);
+  letters().forEach(l => drawLetter(ctx, S, l));
+  if (config.dDrawing !== false) drawStrokes(ctx, S, drawingStroke);
 
   if (analysis) {
     const a = analysis;
@@ -252,12 +264,15 @@ function updatePanel() {
     html += `<p class="warn"><span class="dot red"></span> 오리면 떨어져 나가는 안쪽 조각이 ${a.islandCount}개 있습니다. 이 조각들을 어떻게 처리할지 포트폴리오에 적어 보세요.</p>`;
   const warns = [];
   const ax = (config.frontW - config.areaW) / 2, ay = (config.frontH - config.areaH) / 2;
-  const names = ['문구 1', '문구 2', '그림'];
+  const L = letters().length;
+  const names = a.boxes.map((_, i) => i < L ? `글자 ${i + 1}` : '그림');
+  const free = !!config.dFree; // 자유 모드: 크기·간격 조건 검사 없음
   a.boxes.forEach((b, i) => {
     if (!b) return;
     if (b.x < ax - 0.05 || b.y < ay - 0.05 || b.x + b.w > ax + config.areaW + 0.05 || b.y + b.h > ay + config.areaH + 0.05)
       warns.push(`${names[i]}이(가) 작업 영역을 벗어났습니다. 어디로 옮기면 좋을까요?`);
-    if (i < 2) {
+    if (free) return;
+    if (i < L) {
       if (b.h < config.letterMin - 0.3 || b.h > config.letterMax + 0.3)
         warns.push(`${names[i]} 세로 크기가 조건(${config.letterMin}~${config.letterMax}cm)과 다릅니다.`);
     } else {
@@ -266,23 +281,23 @@ function updatePanel() {
         warns.push(`그림 크기가 조건(${config.pictoMin}~${config.pictoMax}cm)과 다릅니다.`);
     }
   });
-  for (let i = 0; i < 3; i++) for (let j = i + 1; j < 3; j++) {
+  if (!free) for (let i = 0; i < a.boxes.length; i++) for (let j = i + 1; j < a.boxes.length; j++) {
     const A = a.boxes[i], B = a.boxes[j];
     if (!A || !B) continue;
     const gx = Math.max(A.x - (B.x + B.w), B.x - (A.x + A.w));
     const gy = Math.max(A.y - (B.y + B.h), B.y - (A.y + A.h));
     if (Math.max(gx, gy) < 0.5) warns.push(`${names[i]}과(와) ${names[j]} 사이 간격이 0.5cm보다 좁습니다.`);
   }
-  if (D().letters.some(l => l.text && l.stroke < config.strokeMin))
+  if (letters().some(l => l.text && l.stroke < config.strokeMin))
     warns.push(`글자 획 굵기가 조건(${config.strokeMin}cm 이상)보다 가늘어요. 조건을 지키면서 글자를 또렷하게 만들려면, 굵기 대신 글자 크기를 키워 보는 건 어떨까요?`);
-  if (drawing().strokes.some(s => s.w < config.strokeMin))
+  if (config.dDrawing !== false && drawing().strokes.some(s => s.w < config.strokeMin))
     warns.push(`그림에 조건(${config.strokeMin}cm)보다 가는 선이 있어요. 붓 굵기를 키워 다시 그려 볼까요?`);
   // 획이 붙어 글자를 알아보기 힘든 경우 — 크기를 키우는 쪽으로 안내 (굵기만 줄이면 조건에 걸린다)
   a.merged.forEach((m, i) => {
     if (m) warns.push(`${names[i]}의 획이 서로 붙어 안쪽 공간이 좁아졌어요. 글자 크기를 키우면 같은 굵기여도 훨씬 또렷해집니다.`);
   });
   warns.forEach(w => html += `<p class="hint">${w}</p>`);
-  if (!warns.length && (D().letters[0].text || D().letters[1].text))
+  if (!warns.length && letters().some(l => l.text))
     html += `<p class="ok">조건에 잘 맞습니다. 빛이 어떻게 새어 나올지는 [미리보기] 탭에서 확인하세요.</p>`;
   el.innerHTML = html;
   // 교사 분석용: 어떤 피드백이 떴는지 기록 (같은 내용 반복 기록 방지)
@@ -312,19 +327,11 @@ export function initDesign() {
   cv = $('design-canvas');
   ctx = cv.getContext('2d');
 
-  const bind = (id, obj, key, isNum) => {
-    $(id).addEventListener('input', () => {
-      const v = $(id).value;
-      obj()[key] = isNum ? parseFloat(v) : v;
-      touch(); refresh(false);
-    });
-  };
-  bind('d-l1-text', () => work.design.letters[0], 'text');
-  bind('d-l2-text', () => work.design.letters[1], 'text');
-  bind('d-l1-size', () => work.design.letters[0], 'size', true);
-  bind('d-l2-size', () => work.design.letters[1], 'size', true);
-  bind('d-l1-stroke', () => work.design.letters[0], 'stroke', true);
-  bind('d-l2-stroke', () => work.design.letters[1], 'stroke', true);
+  $('d-letter-add').addEventListener('click', () => {
+    if (readOnly) return;
+    letters().push(newLetter(letters().length));
+    touch(); renderLetterRows(); refresh(true);
+  });
 
   document.querySelectorAll('#design-modes button').forEach(b =>
     b.addEventListener('click', () => setMode(b.dataset.m)));
@@ -363,7 +370,7 @@ export function initDesign() {
     // move: 글자만 드래그 (그림은 그린 자리에 남음)
     selected = -1;
     const boxes = analysis ? analysis.boxes : [];
-    for (let i = 1; i >= 0; i--) {
+    for (let i = letters().length - 1; i >= 0; i--) {
       const b = boxes[i];
       if (b && p.x > b.x - 0.3 && p.x < b.x + b.w + 0.3 && p.y > b.y - 0.3 && p.y < b.y + b.h + 0.3) { selected = i; break; }
     }
@@ -401,14 +408,35 @@ export function initDesign() {
   refreshDesign();
 }
 
+// 글자 입력칸: 설정된 글자 수(또는 자유 모드의 현재 개수)만큼 동적으로 만든다
+function renderLetterRows() {
+  const list = $('d-letter-list');
+  const Ls = letters();
+  const free = !!config.dFree;
+  list.innerHTML = Ls.map((l, i) => `
+    <label>글자 ${i + 1}${free && Ls.length > 1 ? ` <button class="dl-del small-btn" data-i="${i}" title="빼기">✕</button>` : ''}</label>
+    <div class="d-row"><input class="dl-text" data-i="${i}" maxlength="1" placeholder="한 글자" value="${(l.text || '').replace(/"/g, '&quot;')}">
+      크기 <input class="dl-size w4" data-i="${i}" type="number" step="0.5" min="2" max="10" value="${l.size}">cm</div>
+    <div class="d-row">획 굵기 <input class="dl-stroke w8" data-i="${i}" type="range" min="0.4" max="1.5" step="0.05" value="${l.stroke}"></div>`).join('');
+  const on = (cls, key, isNum) => list.querySelectorAll(cls).forEach(inp =>
+    inp.addEventListener('input', () => {
+      if (readOnly) return;
+      letters()[+inp.dataset.i][key] = isNum ? parseFloat(inp.value) : inp.value;
+      touch(); refresh(false);
+    }));
+  on('.dl-text', 'text'); on('.dl-size', 'size', true); on('.dl-stroke', 'stroke', true);
+  list.querySelectorAll('.dl-del').forEach(b => b.addEventListener('click', () => {
+    if (readOnly) return;
+    letters().splice(+b.dataset.i, 1);
+    touch(); renderLetterRows(); refresh(true);
+  }));
+  $('d-letter-add').classList.toggle('hidden', !free);
+  $('d-drawing-sec').style.display = config.dDrawing !== false ? '' : 'none';
+}
+
 export function refreshDesign() {
   const d = work.design;
   d.drawing = d.drawing || { strokes: [] };
-  $('d-l1-text').value = d.letters[0].text || '';
-  $('d-l2-text').value = d.letters[1].text || '';
-  $('d-l1-size').value = d.letters[0].size;
-  $('d-l2-size').value = d.letters[1].size;
-  $('d-l1-stroke').value = d.letters[0].stroke;
-  $('d-l2-stroke').value = d.letters[1].stroke;
+  renderLetterRows();
   refresh(true);
 }

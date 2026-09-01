@@ -127,6 +127,7 @@
         <button id="zoom-in" class="small-btn">+</button>
         <button id="zoom-fit" class="small-btn">전체 보기</button>
       </div>
+      <p class="muted small">휠·두 손가락 벌리기로 확대, 빈 곳을 끌면 화면이 움직여요.</p>
       <div id="circuit-predict-row" class="predict-box">
         <label>몇 개가 켜질까요?</label>
         <input id="in-predict-led" type="number" min="0" max="20" placeholder="개수">
@@ -150,14 +151,9 @@
     <aside class="panel-left">
       <h3>도안 <button class="faq-btn" data-faqtab="design">?</button></h3>
       <div class="dim-group">
-        <label>문구 1</label>
-        <div class="d-row"><input id="d-l1-text" maxlength="8" placeholder="글자·문구 (예: 빛나라)">
-          크기 <input id="d-l1-size" type="number" step="0.5" min="2" max="10" class="w4">cm</div>
-        <div class="d-row">획 굵기 <input id="d-l1-stroke" type="range" min="0.4" max="1.5" step="0.05" class="w8"></div>
-        <label>문구 2</label>
-        <div class="d-row"><input id="d-l2-text" maxlength="8" placeholder="글자·문구 (예: 빛나라)">
-          크기 <input id="d-l2-size" type="number" step="0.5" min="2" max="10" class="w4">cm</div>
-        <div class="d-row">획 굵기 <input id="d-l2-stroke" type="range" min="0.4" max="1.5" step="0.05" class="w8"></div>
+        <div id="d-letter-list"></div>
+        <button id="d-letter-add" class="small-btn hidden">+ 글자 추가</button>
+        <div id="d-drawing-sec">
         <label>그림 (직접 그리기)</label>
         <div id="design-modes" class="tools">
           <button data-m="move" class="active">선택·이동</button>
@@ -171,6 +167,7 @@
         </div>
       </div>
       <p class="muted small">글자는 드래그로 옮기고,<br>그림은 [그리기]를 누른 뒤 마우스로 그려요.</p>
+      </div>
     </aside>
     <div class="panel-center scrollable">
       <canvas id="design-canvas"></canvas>
