@@ -350,6 +350,7 @@ function solveInner(C, lab, forceOn) {
     lit: {}, over: new Set(), burnt: new Set(), iOf: {},
     voltage: lab ? ((C.holders[0] && C.holders[0].cells) || 2) * 1.5 : config.voltage,
     tapeComp: C.tapes.map((_, i) => find(i)), energizedPlus: new Set(), energizedMinus: new Set(),
+    netPlus: new Set(), netMinus: new Set(),
     hasBlockedSeries: false, dimSeries: false, noResistorLit: false, anyLit: false };
   if (!H) return res;
 
@@ -384,6 +385,12 @@ function solveInner(C, lab, forceOn) {
     for (let b = a + 1; b < poles.length; b++)
       if (d3(poles[a].p3, poles[b].p3) < 0.7)
         union(term(poles[a].hi, poles[a].pole), term(poles[b].hi, poles[b].pole));
+
+  // 극성 표시용: (+)단자·(−)단자에 직접(테이프로만) 이어진 네트 — 스위치가 꺼져 있어도 색으로 보여준다
+  for (let hi = 0; hi < H; hi++) {
+    res.netPlus.add(find(term(hi, 0)));
+    res.netMinus.add(find(term(hi, 1)));
+  }
 
   const nodeOf = (p) => {
     const p3 = to3Dp(p);
@@ -540,10 +547,15 @@ export function drawAssembled(tctx, rx, ry, rw, rh, opts = {}) {
   if (opts.circuit !== false) {
     C.tapes.forEach((t, i) => {
       const comp = R.tapeComp[i];
+      // 입체에서도 극성이 보이게: (+)쪽 주황·빨강 / (−)쪽 파랑
       let col = lit ? '#b8bec8' : '#9aa0aa';
       if (!R.short) {
+        const isP = R.netPlus.has(comp), isM = R.netMinus.has(comp);
         const inP = R.energizedPlus.has(comp), inM = R.energizedMinus.has(comp);
-        if (inP && inM) col = '#eb5a3c';
+        const flowing = inP && inM;
+        if (isP) col = flowing ? '#eb5a3c' : '#e8a03c';
+        else if (isM) col = flowing ? '#3a6ed6' : '#5b8fd9';
+        else if (flowing) col = '#eb5a3c';
         else if (inP) col = '#e8a03c';
         else if (inM) col = '#5b8fd9';
       } else col = '#e23c3c';
@@ -676,10 +688,16 @@ function draw() {
   // 테이프
   C.tapes.forEach((t, i) => {
     const comp = R ? R.tapeComp[i] : -1;
+    // 색 규칙: (+)에 이어진 줄은 주황(전류가 흐르면 빨강), (−)에 이어진 줄은 파랑.
+    // 스위치를 켜기 전에도 색이 보여서 어느 줄이 어느 극인지 확인할 수 있다.
     let col = '#9aa0aa';
     if (R && !R.short) {
+      const isP = R.netPlus.has(comp), isM = R.netMinus.has(comp);
       const inP = R.energizedPlus.has(comp), inM = R.energizedMinus.has(comp);
-      if (inP && inM) col = C.tested ? `rgba(235,90,60,${0.75 + 0.25 * Math.sin(pulse)})` : '#c9825f';
+      const flowing = inP && inM; // 전류가 흐르는 길
+      if (isP) col = flowing ? `rgba(226,74,44,${0.75 + 0.25 * Math.sin(pulse)})` : '#e8a03c';
+      else if (isM) col = flowing ? `rgba(58,110,214,${0.75 + 0.25 * Math.sin(pulse)})` : '#5b8fd9';
+      else if (flowing) col = C.tested ? `rgba(235,90,60,${0.75 + 0.25 * Math.sin(pulse)})` : '#c9825f';
       else if (inP) col = '#e8a03c';
       else if (inM) col = '#5b8fd9';
     }
@@ -907,6 +925,7 @@ function updatePanel() {
     html += `<p class="hint">실제로 지급되는 LED는 ${config.ledCount}개예요. 배치를 참고로 실험하는 건 자유!</p>`;
   if (R.noHolder) html += '<p class="muted">건전지 홀더를 놓고, 홀더의 (+)(−) 단자에서 테이프를 그어 LED 다리에 연결해 보세요.' +
     (mode === 'placard' ? '<br>옆면 띠와 뒷면은 따로 붙입니다 — 테이프 끝을 서로 만나는 가장자리에 대면 조립할 때 이어져요.' : '') + '</p>';
+  if (!R.noHolder) html += '<p class="muted small">테이프 색: <b style="color:#e8a03c">(+)에 이어진 줄</b> · <b style="color:#5b8fd9">(−)에 이어진 줄</b> · 전류가 흐르면 깜빡여요</p>';
   else if (R.short) html += '<p class="warn">전지가 뜨거워집니다! (+)와 (−)가 직접 만나는 합선이에요. 전도성 테이프는 겹치거나 교차하면 서로 닿아요 — 두 줄이 만나지 않게 떨어뜨리거나 돌아가게 붙여 보세요.' +
     (mode === 'lab' ? ' <b>빨간 동그라미</b>가 테이프끼리 닿은 지점이에요.' : '') + '</p>';
   else if (C.tested) {
