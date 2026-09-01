@@ -17,16 +17,29 @@ function D() { return work.design; }
 function drawing() { D().drawing = D().drawing || { strokes: [] }; return D().drawing; }
 
 // 글자 목록 — 한 글자당 한 요소. 관리자 설정(글자 수·자유 모드)에 맞춰 길이를 정규화한다.
-function newLetter(i) {
+function newLetter() {
+  return { text: '', x: config.frontW / 2, y: config.frontH / 2, size: 6, stroke: 0.7 };
+}
+// 글자 수에 맞춰 작업 영역을 나눠 균등 배치 (개수·설정이 바뀔 때 자동 정렬)
+function autoLayout(arr) {
   const ax = (config.frontW - config.areaW) / 2;
-  return { text: '', x: ax + 3 + (i % 6) * 3.5, y: config.frontH / 2, size: 6, stroke: 0.7 };
+  const cw = config.areaW / arr.length;
+  const size = Math.max(2, Math.min(6, Math.floor((cw - 0.3) * 2) / 2)); // 칸에 맞는 크기
+  arr.forEach((l, i) => {
+    l.x = Math.round((ax + cw * (i + 0.5)) * 2) / 2;
+    l.y = config.frontH / 2;
+    l.size = size;
+  });
 }
 function letters() {
   const d = D();
   d.letters = d.letters || [];
   const want = config.dFree ? Math.max(1, d.letters.length) : Math.max(1, config.dLetters || 2);
-  while (d.letters.length < want) d.letters.push(newLetter(d.letters.length));
+  while (d.letters.length < want) d.letters.push(newLetter());
   if (!config.dFree && d.letters.length > want) d.letters.length = want;
+  // 관리자 설정(글자 수·자유 모드)이 바뀌었으면 겹치지 않게 다시 고르게 배치
+  const key = `${config.dLetters}|${!!config.dFree}`;
+  if (d.layoutKey !== key) { d.layoutKey = key; autoLayout(d.letters); }
   return d.letters;
 }
 
@@ -329,7 +342,9 @@ export function initDesign() {
 
   $('d-letter-add').addEventListener('click', () => {
     if (readOnly) return;
-    letters().push(newLetter(letters().length));
+    const arr = letters();
+    arr.push(newLetter());
+    autoLayout(arr); // 추가하면 전체를 다시 고르게 배치
     touch(); renderLetterRows(); refresh(true);
   });
 
