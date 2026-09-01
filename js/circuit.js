@@ -604,9 +604,10 @@ function draw() {
   if (!ctx) return;
   const d = dims();
   if (view3d) {
-    // 입체는 항상 화면에 맞게 (확대 상태와 무관)
+    // 입체는 항상 화면에 맞게 (확대 상태와 무관) — 기기 화면의 폭·높이 중 여유만큼 크게
     const host3 = cv.closest('.panel-center');
-    const W = Math.max(360, Math.min(900, (host3 ? host3.clientWidth : 700) - 30));
+    const maxByH = Math.round(((window.innerHeight || 800) - 170) / 0.65);
+    const W = Math.max(360, Math.min(1600, maxByH, (host3 ? host3.clientWidth : 700) - 30));
     const H = Math.round(W * 0.65);
     if (cv.width !== W || cv.height !== H) { cv.width = W; cv.height = H; }
     ctx.clearRect(0, 0, W, H);

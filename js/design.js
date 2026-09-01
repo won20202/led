@@ -20,10 +20,13 @@ function drawing() { D().drawing = D().drawing || { strokes: [] }; return D().dr
 function newLetter() {
   return { text: '', x: config.frontW / 2, y: config.frontH / 2, size: 6, stroke: 0.7 };
 }
-// 글자 수에 맞춰 작업 영역을 나눠 균등 배치 (개수·설정이 바뀔 때 자동 정렬)
+// 글자 수에 맞춰 작업 영역을 나눠 균등 배치 (개수·설정이 바뀔 때 자동 정렬).
+// 그림을 포함하는 수업이면 그림도 한 칸을 차지한다고 보고 오른쪽 한 칸을 비워 둔다.
+// (그림을 다른 자리에 넣고 싶으면 글자를 드래그로 옮기면 된다)
 function autoLayout(arr) {
   const ax = (config.frontW - config.areaW) / 2;
-  const cw = config.areaW / arr.length;
+  const slots = arr.length + (config.dDrawing !== false ? 1 : 0);
+  const cw = config.areaW / slots;
   const size = Math.max(2, Math.min(6, Math.floor((cw - 0.3) * 2) / 2)); // 칸에 맞는 크기
   arr.forEach((l, i) => {
     l.x = Math.round((ax + cw * (i + 0.5)) * 2) / 2;
@@ -38,7 +41,7 @@ function letters() {
   while (d.letters.length < want) d.letters.push(newLetter());
   if (!config.dFree && d.letters.length > want) d.letters.length = want;
   // 관리자 설정(글자 수·자유 모드)이 바뀌었으면 겹치지 않게 다시 고르게 배치
-  const key = `${config.dLetters}|${!!config.dFree}`;
+  const key = `${config.dLetters}|${!!config.dFree}|${config.dDrawing !== false}`;
   if (d.layoutKey !== key) { d.layoutKey = key; autoLayout(d.letters); }
   return d.letters;
 }
