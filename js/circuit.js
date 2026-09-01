@@ -625,10 +625,13 @@ function draw() {
     const host = cv.closest('.panel-center');
     const avail = (host ? host.clientWidth : 760) - 40;
     // 플래카드 기본은 뒷면이 크게 보이는 배율 (띠 전체는 가로 스크롤) — [화면 맞춤]을 누르면 전체가 보이게
+    // 기기 화면(노트북·크롬북·모니터)에 맞춰 폭·높이 중 여유 있는 만큼 최대로 키운다
     const cmW = (mode === 'lab' ? LAB.w
       : zFitAll ? d.sh * 2 + d.tw * 2
       : d.bw + d.sh) + MARGIN * 2;
-    Z = Math.max(8, Math.min(28, Math.floor(avail / cmW)));
+    const cmH = (mode === 'lab' ? LAB.h : d.sw + NET_GAP + d.bh + 0.4) + MARGIN * 2;
+    const availH = (window.innerHeight || 800) - 170;
+    Z = Math.max(8, Math.min(Math.floor(avail / cmW), Math.floor(availH / cmH), 44));
   }
   const { ox, oy } = origin();
   const W = mode === 'lab'

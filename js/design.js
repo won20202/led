@@ -227,10 +227,11 @@ export function getDesignMask() {
 
 // ---------- 표시 ----------
 function draw() {
-  // 작업 화면이 가운데 영역을 꽉 채우도록 자동 확대
+  // 작업 화면이 기기 화면(폭·높이)에 맞춰 최대한 크게
   const host = cv.closest('.panel-center');
   const avail = (host ? host.clientWidth : 700) - 50;
-  S = Math.max(18, Math.min(36, Math.floor(avail / config.frontW)));
+  const availH = (window.innerHeight || 800) - 220;
+  S = Math.max(18, Math.min(Math.floor(avail / config.frontW), Math.floor(availH / config.frontH), 64));
   const W = config.frontW * S, H = config.frontH * S;
   cv.width = W + 20; cv.height = H + 20;
   ctx.fillStyle = '#dfe4ea'; ctx.fillRect(0, 0, cv.width, cv.height);
@@ -420,6 +421,9 @@ export function initDesign() {
   });
 
   document.addEventListener('work-loaded', refreshDesign);
+  window.addEventListener('resize', () => {
+    if ($('tab-design').classList.contains('active')) draw();
+  });
   refreshDesign();
 }
 

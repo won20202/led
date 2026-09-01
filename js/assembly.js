@@ -85,8 +85,10 @@ let lastFinalKey = '';
 
 function clearCanvas() {
   // 시뮬레이션 화면이 가용 폭을 꽉 채우도록 자동 확대
-  const host = cv.parentElement;
-  const w = Math.max(520, Math.min(1000, (host ? host.clientWidth : 560) - 8));
+  // 기기 화면(폭·높이)에 맞춰 최대한 크게 — 카드 목록(왼쪽 340px)을 뺀 나머지를 쓴다
+  const host = cv.closest('.order-center') || cv.parentElement;
+  const maxByH = Math.round(((window.innerHeight || 800) - 260) / 0.6);
+  const w = Math.max(520, Math.min(1400, maxByH, (host ? host.clientWidth : 960) - 400));
   if (cv.width !== w) { cv.width = w; cv.height = Math.round(w * 0.6); }
   ctx.fillStyle = '#f4f6f9';
   ctx.fillRect(0, 0, cv.width, cv.height);
@@ -317,6 +319,9 @@ export function initAssembly() {
   });
 
   document.addEventListener('work-loaded', refreshAssembly);
+  window.addEventListener('resize', () => {
+    if ($('tab-order').classList.contains('active')) { if (curStep >= 0) selectStep(curStep); else idleCanvas(); }
+  });
   render();
 }
 export function refreshAssembly() {
