@@ -72,16 +72,21 @@ function dims() {
     tw: num(p.topbot.w) || 24, td: num(p.topbot.h) || 4.5,
   };
 }
-// 전개도의 면들 (뒷면 기준 좌표계, 십자 모양)
+// 전개도의 면들 — 실물 제작처럼 두 조각:
+// 위에는 옆면 4개가 접는선으로 이어진 한 줄 띠 [왼쪽 옆면|윗면|오른쪽 옆면|아랫면],
+// 아래에는 뒷면(회로 판)이 따로 있다. 조립하면 띠가 뒷면 둘레를 감싼다.
+const NET_GAP = 1.5; // 띠와 뒷면 사이 간격 (cm)
 function faces() {
   const d = dims();
-  const cy0 = (d.bh - d.sh) / 2;
+  const sy0 = -NET_GAP - d.sw, sy1 = -NET_GAP; // 띠 높이 = 옆면 폭(케이스 깊이)
+  // 윗면 구간을 뒷면과 같은 x에 정렬 — 세로로 맞춰 그린 테이프가 접었을 때도 만난다
+  const off = (d.bw - d.tw) / 2;
   return {
+    left: { x0: off - d.sh, y0: sy0, x1: off, y1: sy1, label: '왼쪽 옆면' },
+    top: { x0: off, y0: sy0, x1: off + d.tw, y1: sy1, label: '윗면' },
+    right: { x0: off + d.tw, y0: sy0, x1: off + d.tw + d.sh, y1: sy1, label: '오른쪽 옆면' },
+    bottom: { x0: off + d.tw + d.sh, y0: sy0, x1: off + d.tw * 2 + d.sh, y1: sy1, label: '아랫면' },
     back: { x0: 0, y0: 0, x1: d.bw, y1: d.bh, label: '뒷면 (안쪽)' },
-    top: { x0: 0.5, y0: -d.td, x1: 0.5 + d.tw, y1: 0, label: '윗면' },
-    bottom: { x0: 0.5, y0: d.bh, x1: 0.5 + d.tw, y1: d.bh + d.td, label: '아랫면' },
-    left: { x0: -d.sw, y0: cy0, x1: 0, y1: cy0 + d.sh, label: '왼쪽 옆면' },
-    right: { x0: d.bw, y0: cy0, x1: d.bw + d.sw, y1: cy0 + d.sh, label: '오른쪽 옆면' },
   };
 }
 function faceOf(p) {
@@ -108,7 +113,7 @@ function clampNet(p) {
     const dd = Math.hypot(q.x - p.x, q.y - p.y);
     if (dd < bd) { bd = dd; best = q; }
   }
-  return best;
+  return best || { x: 0, y: 0 }; // 좌표가 없는 비정상 이벤트 방어
 }
 // 부품(다리 포함)이 한 면 안에 들어오게
 function clampPart(p, dir) {
@@ -129,10 +134,14 @@ function to3Dp(p) {
   const q = clampNet(p);
   const k = faceOf(q) || 'back';
   if (k === 'back') return { X: q.x, Y: d.bh - q.y, Z: 0.15 };
-  if (k === 'top') return { X: q.x, Y: d.bh - 0.15, Z: -q.y };
-  if (k === 'bottom') return { X: q.x, Y: 0.15, Z: q.y - d.bh };
-  if (k === 'left') return { X: 0.15, Y: d.bh - q.y, Z: -q.x };
-  return { X: d.bw - 0.15, Y: d.bh - q.y, Z: q.x - d.bw };
+  // 옆면 띠: 아래변이 뒷면 가장자리에 붙는 쪽(Z=0), 위변이 앞면 쪽(Z=깊이)
+  const f = faces()[k];
+  const u = q.x - f.x0;        // 띠 길이 방향
+  const v = f.y1 - q.y;        // 깊이 방향 (아래변 0 → 위변 d.sw)
+  if (k === 'left') return { X: 0.15, Y: u, Z: v };
+  if (k === 'top') return { X: q.x, Y: d.bh - 0.15, Z: v }; // 윗면은 뒷면과 x 정렬됨
+  if (k === 'right') return { X: d.bw - 0.15, Y: d.bh - u, Z: v };
+  return { X: d.bw - (d.bw - d.tw) / 2 - u, Y: 0.15, Z: v }; // 아랫면
 }
 const d3 = (a, b) => Math.hypot(a.X - b.X, a.Y - b.Y, a.Z - b.Z);
 
@@ -191,7 +200,7 @@ const MARGIN = 0.8;
 function origin() {
   if (mode === 'lab') return { ox: MARGIN, oy: MARGIN };
   const d = dims();
-  return { ox: MARGIN + d.sw, oy: MARGIN + d.td };
+  return { ox: MARGIN + d.sh - (d.bw - d.tw) / 2, oy: MARGIN + d.sw + NET_GAP };
 }
 function toCm(e) {
   const r = cv.getBoundingClientRect();
@@ -603,16 +612,16 @@ function draw() {
   if (zAuto) {
     const host = cv.closest('.panel-center');
     const avail = (host ? host.clientWidth : 760) - 40;
-    const cmW = (mode === 'lab' ? LAB.w : d.sw * 2 + d.bw) + MARGIN * 2;
-    Z = Math.max(10, Math.min(28, Math.floor(avail / cmW)));
+    const cmW = (mode === 'lab' ? LAB.w : d.sh * 2 + d.tw * 2) + MARGIN * 2;
+    Z = Math.max(8, Math.min(28, Math.floor(avail / cmW)));
   }
   const { ox, oy } = origin();
   const W = mode === 'lab'
     ? Math.round((LAB.w + MARGIN * 2) * Z)
-    : Math.round((d.sw * 2 + d.bw + MARGIN * 2) * Z);
+    : Math.round((d.sh * 2 + d.tw * 2 + MARGIN * 2) * Z);
   const H = mode === 'lab'
     ? Math.round((LAB.h + MARGIN * 2) * Z)
-    : Math.round((d.td * 2 + d.bh + MARGIN * 2 + 0.4) * Z);
+    : Math.round((d.sw + NET_GAP + d.bh + MARGIN * 2 + 0.4) * Z);
   if (cv.width !== W || cv.height !== H) { cv.width = W; cv.height = H; }
   ctx.clearRect(0, 0, W, H);
   ctx.save();
@@ -635,24 +644,25 @@ function draw() {
     ctx.fillStyle = '#98a1ab'; ctx.font = '11px sans-serif';
     ctx.fillText('회로 실험실 — 전지·LED·테이프를 자유롭게 연결해 보세요', 6, 15);
   } else {
-    // 전개도 면들
+    // 전개도 면들 — 옆면 띠(위) + 뒷면(아래) 두 조각
     const F = faces();
     for (const k of Object.keys(F)) {
       const f = F[k];
       ctx.fillStyle = k === 'back' ? '#fbf9f2' : '#f3f0fa';
       ctx.fillRect(f.x0 * Z, f.y0 * Z, (f.x1 - f.x0) * Z, (f.y1 - f.y0) * Z);
-      ctx.strokeStyle = '#c2cad3';
-      ctx.strokeRect(f.x0 * Z, f.y0 * Z, (f.x1 - f.x0) * Z, (f.y1 - f.y0) * Z);
       ctx.fillStyle = '#98a1ab'; ctx.font = '11px sans-serif';
       ctx.fillText(f.label, f.x0 * Z + 5, f.y0 * Z + 14);
     }
-    // 접는 선 표시
+    // 조각 외곽선 (실선) — 띠 전체와 뒷면
+    ctx.strokeStyle = '#c2cad3';
+    ctx.strokeRect(F.left.x0 * Z, F.left.y0 * Z, (F.bottom.x1 - F.left.x0) * Z, (F.left.y1 - F.left.y0) * Z);
+    ctx.strokeRect(0, 0, d.bw * Z, d.bh * Z);
+    // 띠 안의 접는 선 (점선) — 여기서 꺾어 뒷면 둘레를 감싼다
     ctx.strokeStyle = '#b8a9d9'; ctx.setLineDash([5, 4]);
     ctx.beginPath();
-    ctx.moveTo(0, 0); ctx.lineTo(0, d.bh * Z);
-    ctx.moveTo(d.bw * Z, 0); ctx.lineTo(d.bw * Z, d.bh * Z);
-    ctx.moveTo(0.5 * Z, 0); ctx.lineTo((0.5 + d.tw) * Z, 0);
-    ctx.moveTo(0.5 * Z, d.bh * Z); ctx.lineTo((0.5 + d.tw) * Z, d.bh * Z);
+    [F.top.x0, F.right.x0, F.bottom.x0].forEach(x => {
+      ctx.moveTo(x * Z, F.left.y0 * Z); ctx.lineTo(x * Z, F.left.y1 * Z);
+    });
     ctx.stroke(); ctx.setLineDash([]);
 
     // 1cm 격자 (뒷면)
@@ -1198,7 +1208,9 @@ export function initCircuit() {
         const o = (pre.type === 'led' ? C.leds : C.resistors)[pre.i];
         if (o && Math.hypot(p.x - o.x, p.y - o.y) < Math.hypot(p.x - sn.x, p.y - sn.y)) sn = null;
       }
-      if (!drawingTape && !sn && pre && ['led', 'res', 'holder', 'wire'].includes(pre.type)) {
+      // (기존 테이프도 같은 규칙 — 누르면 선택되어 옮기거나 지울 수 있다.
+      //  분기선을 긋고 싶으면 빈 곳에서 시작해 테이프 위에서 끝내면 된다)
+      if (!drawingTape && !sn && pre && ['led', 'res', 'holder', 'wire', 'tape'].includes(pre.type)) {
         selected = pre;
         updateFloatProps();
         beginDrag(p, e);
@@ -1417,6 +1429,7 @@ function deleteSelected() {
   afterChange();
 }
 const TRASH_ICON = `<svg width="13" height="14" viewBox="0 0 13 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M1 3.5h11M4.5 3.5V2a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v1.5M2.5 3.5l.6 8.5a1 1 0 0 0 1 .9h4.8a1 1 0 0 0 1-.9l.6-8.5M5 6v4M8 6v4"/></svg>`;
+const ROT_ICON = `<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 7a5 5 0 1 1-1.5-3.6M12 1v3h-3"/></svg>`;
 function updateFloatProps() {
   const el = $('float-props');
   const C = am();
@@ -1425,7 +1438,7 @@ function updateFloatProps() {
   let html = '';
   if (selected.type === 'led') {
     const l = C.leds[selected.i];
-    html += `<button class="fp fp-rot">회전</button>`;
+    html += `<button class="fp fp-rot" title="회전 (R)">${ROT_ICON}</button>`;
     if (config.advanced) {
       html += `<span class="fp-sep"></span>` + Object.entries(KINDS).map(([k, v]) =>
         `<button class="fp fp-kind ${(l.kind || 'white') === k ? 'on' : ''}" data-k="${k}">${v.label}</button>`).join('');
@@ -1440,10 +1453,10 @@ function updateFloatProps() {
     }
     html += `<span class="fp-sep"></span><button class="fp fp-del" title="삭제 (Delete)">${TRASH_ICON}</button>`;
   } else if (selected.type === 'res') {
-    html += `<button class="fp fp-rot">회전</button><button class="fp fp-del" title="삭제 (Delete)">${TRASH_ICON}</button>`;
+    html += `<button class="fp fp-rot" title="회전 (R)">${ROT_ICON}</button><button class="fp fp-del" title="삭제 (Delete)">${TRASH_ICON}</button>`;
   } else if (selected.type === 'holder') {
     const h = C.holders[selected.i];
-    html += `<button class="fp fp-rot">회전</button>`;
+    html += `<button class="fp fp-rot" title="회전 (R)">${ROT_ICON}</button>`;
     if (mode === 'lab') {
       html += `<span class="fp-sep"></span><span class="fp-label">전지</span>` + [1, 2, 3, 4].map(nn =>
         `<button class="fp fp-cell ${(h.cells || 2) === nn ? 'on' : ''}" data-n="${nn}">${nn}개<small>${(nn * 1.5).toFixed(1)}V</small></button>`).join('');
