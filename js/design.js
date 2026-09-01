@@ -252,7 +252,7 @@ function updatePanel() {
     html += `<p class="warn"><span class="dot red"></span> 오리면 떨어져 나가는 안쪽 조각이 ${a.islandCount}개 있습니다. 이 조각들을 어떻게 처리할지 포트폴리오에 적어 보세요.</p>`;
   const warns = [];
   const ax = (config.frontW - config.areaW) / 2, ay = (config.frontH - config.areaH) / 2;
-  const names = ['글자 1', '글자 2', '그림'];
+  const names = ['문구 1', '문구 2', '그림'];
   a.boxes.forEach((b, i) => {
     if (!b) return;
     if (b.x < ax - 0.05 || b.y < ay - 0.05 || b.x + b.w > ax + config.areaW + 0.05 || b.y + b.h > ay + config.areaH + 0.05)

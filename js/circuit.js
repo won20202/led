@@ -50,6 +50,7 @@ let mode = 'lab';          // 'lab' = 회로 실험실(빈 화면) | 'placard' =
 let view3d = false;
 let Z = 15;
 let zAuto = true;          // 화면 폭에 맞춰 자동 확대 (수동 줌을 쓰면 해제)
+let zFitAll = false;       // 플래카드: false=뒷면이 크게(넘치면 스크롤), true=[화면 맞춤]=전체가 보이게
 
 // 지금 편집 중인 회로 모델 (실험실 or 플래카드)
 function am() { return mode === 'lab' ? (work.lab = work.lab || { leds: [], resistors: [], tapes: [], holder: null, tested: false }) : work.circuit; }
@@ -624,7 +625,10 @@ function draw() {
   if (zAuto) {
     const host = cv.closest('.panel-center');
     const avail = (host ? host.clientWidth : 760) - 40;
-    const cmW = (mode === 'lab' ? LAB.w : d.sh * 2 + d.tw * 2) + MARGIN * 2;
+    // 플래카드 기본은 뒷면이 크게 보이는 배율 (띠 전체는 가로 스크롤) — [화면 맞춤]을 누르면 전체가 보이게
+    const cmW = (mode === 'lab' ? LAB.w
+      : zFitAll ? d.sh * 2 + d.tw * 2
+      : d.bw + d.sh) + MARGIN * 2;
     Z = Math.max(8, Math.min(28, Math.floor(avail / cmW)));
   }
   const { ox, oy } = origin();
@@ -1170,7 +1174,13 @@ export function initCircuit() {
   $('btn-3d').addEventListener('click', () => set3D(!view3d));
   $('zoom-in').addEventListener('click', () => { if (!view3d) { zAuto = false; Z = Math.min(30, Z + 3); draw(); } });
   $('zoom-out').addEventListener('click', () => { if (!view3d) { zAuto = false; Z = Math.max(8, Z - 3); draw(); } });
-  $('zoom-fit').addEventListener('click', () => { if (!view3d) { zAuto = true; draw(); } });
+  $('zoom-fit').addEventListener('click', () => {
+    if (view3d) return;
+    // 누를 때마다 [전체 보기] ↔ [크게 보기] 전환
+    zAuto = true; zFitAll = !zFitAll;
+    $('zoom-fit').textContent = zFitAll ? '크게 보기' : '전체 보기';
+    draw();
+  });
   cv.addEventListener('wheel', e => {
     if (view3d) return;
     e.preventDefault();
