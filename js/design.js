@@ -8,6 +8,7 @@ const RA = 8;   // 분석용 px/cm
 const FONT = '"Noto Sans CJK KR","Noto Sans KR","Malgun Gothic","Segoe UI Symbol",sans-serif';
 
 let cv, ctx, mode = 'move';  // 'move' | 'draw' | 'erase'
+let resizing = null;         // 핸들을 잡고 글자 크기를 조절하는 중
 let lastFeedbackKey = '';
 let selected = -1, dragOff = null;
 let drawingStroke = null;
@@ -40,12 +41,14 @@ function drawLetter(c, scale, o) {
   c.save();
   // 중간 굵기 글꼴 + 외곽선 보정: 슬라이더 값이 대략 실제 획 굵기(cm)가 되도록.
   // 기본 글꼴 획 ≈ 0.06 × 글자크기 — 붙어 뭉개지지 않으면서 굵기를 조절할 수 있다.
+  c.translate(o.x * scale, o.y * scale);
+  c.scale(o.xs || 1, 1); // 가로 늘림 배율 (핸들로 옆으로만 키울 수 있다)
   c.font = `500 ${o.size * scale}px ${FONT}`;
   c.textAlign = 'center'; c.textBaseline = 'middle';
   c.fillStyle = '#fff'; c.strokeStyle = '#fff';
   const extra = Math.max(0, (o.stroke - 0.06 * o.size)) * scale;
-  if (extra > 0.5) { c.lineWidth = extra; c.lineJoin = 'round'; c.strokeText(o.text, o.x * scale, o.y * scale); }
-  c.fillText(o.text, o.x * scale, o.y * scale);
+  if (extra > 0.5) { c.lineWidth = extra; c.lineJoin = 'round'; c.strokeText(o.text, 0, 0); }
+  c.fillText(o.text, 0, 0);
   c.restore();
 }
 function drawStrokes(c, scale, extra) {
@@ -217,6 +220,15 @@ export function getDesignMask() {
   return { canvas: oc, W: a.W, H: a.H, RA, anyCut };
 }
 
+// 선택 박스의 크기 조절 핸들 위치 (cm) — kind: 'x' 가로만 / 'y' 세로만 / 'xy' 비율 유지
+function handlePts(b) {
+  return [
+    { kind: 'x', x: b.x + b.w + 0.15, y: b.y + b.h / 2 },
+    { kind: 'y', x: b.x + b.w / 2, y: b.y + b.h + 0.15 },
+    { kind: 'xy', x: b.x + b.w + 0.15, y: b.y + b.h + 0.15 },
+  ];
+}
+
 // ---------- 표시 ----------
 function draw() {
   // 작업 화면이 기기 화면(폭·높이)에 맞춰 최대한 크게
@@ -270,6 +282,9 @@ function draw() {
     const b = analysis.boxes[selected];
     ctx.strokeStyle = '#4ea1f7'; ctx.lineWidth = 2;
     ctx.strokeRect(b.x * S - 3, b.y * S - 3, b.w * S + 6, b.h * S + 6);
+    // 크기 조절 핸들: 오른쪽=가로만, 아래=세로만, 모서리=비율 유지
+    ctx.fillStyle = '#4ea1f7';
+    handlePts(b).forEach(h => { ctx.beginPath(); ctx.rect(h.x * S - 5, h.y * S - 5, 10, 10); ctx.fill(); });
   }
   ctx.restore();
 }
@@ -335,7 +350,7 @@ function refresh(immediate) {
 }
 
 function setMode(m) {
-  mode = m; selected = -1; drawingStroke = null;
+  mode = m; selected = -1; drawingStroke = null; resizing = null;
   document.querySelectorAll('#design-modes button').forEach(b => b.classList.toggle('active', b.dataset.m === m));
   cv.style.cursor = m === 'draw' ? 'crosshair' : 'default';
   draw();
@@ -385,7 +400,18 @@ export function initDesign() {
       }
       return;
     }
-    // move: 글자만 드래그 (그림은 그린 자리에 남음)
+    // move: 선택된 글자의 핸들을 잡았으면 크기 조절 시작 (일반 도형 편집처럼)
+    if (selected >= 0 && analysis && analysis.boxes[selected]) {
+      const b = analysis.boxes[selected];
+      const h = handlePts(b).find(q => Math.abs(p.x - q.x) < 0.5 && Math.abs(p.y - q.y) < 0.5);
+      if (h) {
+        const o = work.design.letters[selected];
+        resizing = { kind: h.kind, box: { ...b }, size0: o.size, xs0: o.xs || 1 };
+        cv.setPointerCapture(e.pointerId);
+        return;
+      }
+    }
+    // 글자만 드래그 (그림은 그린 자리에 남음)
     selected = -1;
     const boxes = analysis ? analysis.boxes : [];
     for (let i = letters().length - 1; i >= 0; i--) {
@@ -407,6 +433,24 @@ export function initDesign() {
       if (Math.hypot(p.x - last.x, p.y - last.y) > 0.15) { drawingStroke.pts.push(p); draw(); }
       return;
     }
+    // 핸들 리사이즈: 가로만 / 세로만 / 비율 유지 — 시작 시점 박스 기준 비율로 계산
+    if (resizing && selected >= 0) {
+      const o = work.design.letters[selected];
+      const b = resizing.box;
+      const rw = Math.max(0.15, (p.x - b.x) / b.w);   // 가로 비율
+      const rh = Math.max(0.15, (p.y - b.y) / b.h);   // 세로 비율
+      if (resizing.kind === 'x') {
+        o.xs = Math.max(0.4, Math.min(3, resizing.xs0 * rw));
+      } else if (resizing.kind === 'y') {
+        const ns = Math.max(2, Math.min(10, resizing.size0 * rh));
+        o.size = Math.round(ns * 10) / 10;
+        o.xs = Math.max(0.4, Math.min(3, resizing.xs0 * resizing.size0 / o.size)); // 가로 폭은 유지
+      } else {
+        o.size = Math.round(Math.max(2, Math.min(10, resizing.size0 * rh)) * 10) / 10;
+      }
+      draw();
+      return;
+    }
     if (selected < 0 || !dragOff) return;
     const o = work.design.letters[selected];
     o.x = Math.round((p.x - dragOff.x) * 2) / 2;
@@ -414,6 +458,11 @@ export function initDesign() {
     draw();
   });
   cv.addEventListener('pointerup', () => {
+    if (resizing) {
+      resizing = null;
+      renderLetterRows(); // 크기 입력칸도 새 값으로
+      touch(); refresh(true);
+    }
     if (drawingStroke) {
       if (drawingStroke.pts.length > 1) drawing().strokes.push(drawingStroke);
       drawingStroke = null;
