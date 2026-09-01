@@ -905,7 +905,8 @@ function updatePanel() {
     html += `<p class="supply">전지 — ${C.holders.map(h => `AA×${h.cells || 2} (${((h.cells || 2) * 1.5).toFixed(1)}V)`).join(' · ')}</p>`;
   if (mode === 'placard' && C.leds.length > config.ledCount)
     html += `<p class="hint">실제로 지급되는 LED는 ${config.ledCount}개예요. 배치를 참고로 실험하는 건 자유!</p>`;
-  if (R.noHolder) html += '<p class="muted">건전지 홀더를 놓고, 홀더의 (+)(−) 단자에서 테이프를 그어 LED 다리에 연결해 보세요.</p>';
+  if (R.noHolder) html += '<p class="muted">건전지 홀더를 놓고, 홀더의 (+)(−) 단자에서 테이프를 그어 LED 다리에 연결해 보세요.' +
+    (mode === 'placard' ? '<br>옆면 띠와 뒷면은 따로 붙입니다 — 테이프 끝을 서로 만나는 가장자리에 대면 조립할 때 이어져요.' : '') + '</p>';
   else if (R.short) html += '<p class="warn">전지가 뜨거워집니다! (+)와 (−)가 직접 만나는 합선이에요. 전도성 테이프는 겹치거나 교차하면 서로 닿아요 — 두 줄이 만나지 않게 떨어뜨리거나 돌아가게 붙여 보세요.' +
     (mode === 'lab' ? ' <b>빨간 동그라미</b>가 테이프끼리 닿은 지점이에요.' : '') + '</p>';
   else if (C.tested) {
