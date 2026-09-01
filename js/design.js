@@ -17,22 +17,14 @@ function D() { return work.design; }
 function drawing() { D().drawing = D().drawing || { strokes: [] }; return D().drawing; }
 
 // 글자 목록 — 한 글자당 한 요소. 관리자 설정(글자 수·자유 모드)에 맞춰 길이를 정규화한다.
+// 배치·크기·간격은 자동으로 정해 주지 않는다 — 조건에 맞게 놓는 것까지가 학생의 설계 활동.
+// 새 글자는 기존 글자와 겹치지 않는 빈 자리에서 시작할 뿐이다.
 function newLetter() {
-  return { text: '', x: config.frontW / 2, y: config.frontH / 2, size: 6, stroke: 0.7 };
-}
-// 글자 수에 맞춰 작업 영역을 나눠 균등 배치 (개수·설정이 바뀔 때 자동 정렬).
-// 그림을 포함하는 수업이면 그림도 한 칸을 차지한다고 보고 오른쪽 한 칸을 비워 둔다.
-// (그림을 다른 자리에 넣고 싶으면 글자를 드래그로 옮기면 된다)
-function autoLayout(arr) {
   const ax = (config.frontW - config.areaW) / 2;
-  const slots = arr.length + (config.dDrawing !== false ? 1 : 0);
-  const cw = config.areaW / slots;
-  const size = Math.max(2, Math.min(6, Math.floor((cw - 0.3) * 2) / 2)); // 칸에 맞는 크기
-  arr.forEach((l, i) => {
-    l.x = Math.round((ax + cw * (i + 0.5)) * 2) / 2;
-    l.y = config.frontH / 2;
-    l.size = size;
-  });
+  const used = (D().letters || []).map(l => l.x);
+  let x = ax + 3;
+  while (used.some(u => Math.abs(u - x) < 2.5) && x < ax + config.areaW - 2) x += 2.5;
+  return { text: '', x: Math.round(x * 2) / 2, y: config.frontH / 2, size: 6, stroke: 0.7 };
 }
 function letters() {
   const d = D();
@@ -40,9 +32,6 @@ function letters() {
   const want = config.dFree ? Math.max(1, d.letters.length) : Math.max(1, config.dLetters || 2);
   while (d.letters.length < want) d.letters.push(newLetter());
   if (!config.dFree && d.letters.length > want) d.letters.length = want;
-  // 관리자 설정(글자 수·자유 모드)이 바뀌었으면 겹치지 않게 다시 고르게 배치
-  const key = `${config.dLetters}|${!!config.dFree}|${config.dDrawing !== false}`;
-  if (d.layoutKey !== key) { d.layoutKey = key; autoLayout(d.letters); }
   return d.letters;
 }
 
@@ -248,6 +237,18 @@ function draw() {
   ctx.fillStyle = 'rgba(255,255,255,0.4)'; ctx.font = '11px sans-serif';
   ctx.fillText(`작업 영역 ${config.areaW}×${config.areaH}cm`, ax * S + 4, ay * S - 4);
 
+  // 등분 가이드선 (참고용) — 글자 수 + 그림 한 칸. 배치는 학생이 드래그로 직접 한다
+  const slots = letters().length + (config.dDrawing !== false ? 1 : 0);
+  if (slots > 1) {
+    ctx.strokeStyle = 'rgba(255,255,255,0.14)'; ctx.setLineDash([3, 6]);
+    ctx.beginPath();
+    for (let i = 1; i < slots; i++) {
+      const gx = (ax + config.areaW / slots * i) * S;
+      ctx.moveTo(gx, ay * S); ctx.lineTo(gx, (ay + config.areaH) * S);
+    }
+    ctx.stroke(); ctx.setLineDash([]);
+  }
+
   letters().forEach(l => drawLetter(ctx, S, l));
   if (config.dDrawing !== false) drawStrokes(ctx, S, drawingStroke);
 
@@ -346,9 +347,7 @@ export function initDesign() {
 
   $('d-letter-add').addEventListener('click', () => {
     if (readOnly) return;
-    const arr = letters();
-    arr.push(newLetter());
-    autoLayout(arr); // 추가하면 전체를 다시 고르게 배치
+    letters().push(newLetter()); // 빈 자리에 생김 — 배치는 드래그로 직접
     touch(); renderLetterRows(); refresh(true);
   });
 
