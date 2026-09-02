@@ -11,6 +11,21 @@ const DARK = 0.78; // 고정된 실내 어둡기 — 빛 색이 잘 보이는 �
 
 function lerp(a, b, t) { return a + (b - a) * t; }
 
+// 고휘도 LED는 우드락 안에서 산란이 강하다 — 켜진 개수만큼 전체가 고르게 밝아지는 바닥광.
+// 1~2개면 위치에 따른 밝기 차이가 뚜렷하고, 8개쯤 달면 어두운 곳 없이 환해진다.
+function paintAmbient(c2, litArr, alphaScale) {
+  let sum = 0, r = 0, g = 0, b = 0, n = 0;
+  for (const L of litArr) {
+    const w = Math.min(1, L.b) * (L.face === 'back' ? 1 : 0.4); // 옆면 빛은 간접광이라 기여 절반 이하
+    sum += w;
+    r += L.rgb[0]; g += L.rgb[1]; b += L.rgb[2]; n++;
+  }
+  if (!n || sum <= 0) return;
+  const a = Math.min(0.5, 0.09 * sum) * alphaScale;
+  c2.fillStyle = `rgba(${Math.round(r / n)},${Math.round(g / n)},${Math.round(b / n)},${a})`;
+  c2.fillRect(0, 0, c2.canvas.width, c2.canvas.height);
+}
+
 // LED 하나의 빛 번짐 — 뒷면 가운데쯤 달면 앞판 세로를 거의 다 비추고,
 // 위·아래로 치우치면 반대쪽 절반이 어두워지는 정도로 넉넉하게 퍼진다.
 function paintGlow(c2, L, d, depth, RA, alphaScale) {
@@ -70,6 +85,7 @@ export function drawPreview() {
     const c2 = lc.getContext('2d');
     c2.globalCompositeOperation = 'lighter';
     const boost = 0.45 + 0.55 * dark;
+    paintAmbient(c2, light.lit, boost);
     for (const L of light.lit) paintGlow(c2, L, d, depth, RA, boost);
     // 트레이싱지 확산: 저해상도 → 확대가 자연스러운 번짐이 된다
     c2.globalCompositeOperation = 'destination-in';
@@ -114,6 +130,7 @@ export function drawLitFront(tctx, px, py, pw, ph, litOverride) {
   lc.width = lw; lc.height = lh;
   const c2 = lc.getContext('2d');
   c2.globalCompositeOperation = 'lighter';
+  paintAmbient(c2, light.lit, 1);
   for (const L of light.lit) paintGlow(c2, L, d, depth, RA, 1);
   c2.globalCompositeOperation = 'destination-in';
   c2.drawImage(mask.canvas, 0, 0, lw, lh);
