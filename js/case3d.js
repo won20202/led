@@ -277,8 +277,10 @@ function assemble(logIt) {
 export function renderLogList() {
   const el = $('case-log');
   if (!el) return;
-  el.innerHTML = work.log.length
-    ? work.log.slice(-12).map(l => `<div>${l}</div>`).join('')
+  // 케이스 탭에는 케이스(치수·조립) 기록만 — 회로·조립 순서 기록은 데이터로만 남는다
+  const caseRows = work.log.filter(l => !String(l).includes('회로 —') && !String(l).includes('조립 순서 —'));
+  el.innerHTML = caseRows.length
+    ? caseRows.slice(-12).map(l => `<div>${l}</div>`).join('')
     : '<div class="muted">조립할 때마다 기록이 쌓입니다. 포트폴리오 자기 평가에 활용하세요.</div>';
 }
 
