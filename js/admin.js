@@ -458,6 +458,15 @@ async function renderWorks() {
     const openBans = new Set([...document.querySelectorAll('.adm-ban[open]')].map(d => d.dataset.ban));
     const byBan = {};
     cloudRows.forEach(r => { (byBan[r.ban] = byBan[r.ban] || []).push(r); });
+    // 지금 작업 중 — 수업시간 외 보충·미실시 학생처럼 흩어져 들어온 학생을 반 상관없이 모아 본다
+    const liveCut = Date.now() - 10 * 60 * 1000;
+    const liveRows = cloudRows.filter(r => new Date(r.updated_at).getTime() > liveCut);
+    const liveOpen = document.querySelector('#live-sec[open]') !== null;
+    if (cloudRows.length)
+      html += `<details class="adm-ban" id="live-sec" ${liveOpen ? 'open' : ''}>
+        <summary>지금 작업 중 — 최근 10분, 반 상관없이 (${liveRows.length}명)</summary>
+        <div class="board-grid" id="live-grid"><p class="muted">불러오는 중…</p></div>
+      </details>`;
     html += cloudRows.length
       ? Object.keys(byBan).sort((a, b) => a - b).map(ban =>
           `<details class="adm-ban" data-ban="${ban}" ${openBans.has(String(ban)) ? 'open' : ''}>
@@ -472,10 +481,46 @@ async function renderWorks() {
   bindWorkButtons();
   // 펼친 반의 보드를 채운다 (payload는 펼쳤을 때만 받아옴 — 300명 규모 대비)
   el.querySelectorAll('.adm-ban').forEach(det => {
-    const load = () => { if (det.open) loadBanBoard(det.dataset.ban); };
+    const load = () => {
+      if (!det.open) return;
+      if (det.id === 'live-sec') loadLiveBoard();
+      else loadBanBoard(det.dataset.ban);
+    };
     det.addEventListener('toggle', load);
     load();
   });
+}
+
+// "지금 작업 중" 보드 — 최근 10분 안에 저장한 학생을 반-번호순으로 모아 썸네일로 보여준다
+async function loadLiveBoard() {
+  const grid = $('live-grid');
+  if (!grid) return;
+  const cut = Date.now() - 10 * 60 * 1000;
+  const act = cloudRows.filter(r => new Date(r.updated_at).getTime() > cut)
+    .sort((a, b) => a.ban - b.ban || a.num - b.num);
+  if (!act.length) { grid.innerHTML = '<p class="muted">최근 10분 안에 작업한 학생이 없습니다.</p>'; return; }
+  const rowsByKey = {};
+  for (const ban of [...new Set(act.map(r => r.ban))]) {
+    try { (await cloudListBan(ban)).forEach(r => { rowsByKey[`${r.ban}-${r.num}`] = r; }); } catch (e) { /* 다음 갱신에 재시도 */ }
+  }
+  grid.innerHTML = act.map(r0 => {
+    const r = rowsByKey[`${r0.ban}-${r0.num}`] || r0;
+    const tabBadge = `<span class="tab-badge">${TAB_NAMES[(r.payload || {}).activeTab] || '케이스'}</span>`;
+    return `
+      <div class="stu-card">
+        <div class="stu-head"><b>${r.ban}반 ${r.num}번</b>${tabBadge}${activityBadge(r.updated_at)}
+          <span class="muted small">${new Date(r.updated_at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}</span></div>
+        <canvas class="stu-thumb" data-key="${r.ban}-${r.num}" title="눌러서 크게 보기"></canvas>
+        <div class="stu-chips">${summarize(r.payload || {})}</div>
+        <div class="stu-btns"><button class="w-open" data-id="cloud:${r.id}">보기</button></div>
+      </div>`;
+  }).join('');
+  grid.querySelectorAll('.stu-thumb').forEach(cnv => {
+    const r = rowsByKey[cnv.dataset.key];
+    try { drawThumb(cnv, r && r.payload); } catch (e) { /* 그리기 실패는 무시 */ }
+    cnv.addEventListener('click', () => cnv.parentElement.querySelector('.w-open')?.click());
+  });
+  bindOpenButtons(grid);
 }
 
 // 학생 작업 요약 칩 (실시간 보드용)
