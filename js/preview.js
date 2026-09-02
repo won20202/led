@@ -66,8 +66,9 @@ export function drawPreview() {
   const d = light.dims;
   const depth = (d.sw || 4.5) + config.thickness;
 
-  const S = 22;
   const W = cv.width = 760, H = cv.height = 420;
+  // 판 크기(A4·정사각형 등)에 맞춰 화면에 들어오게
+  const S = Math.min(22, (W - 80) / d.bw, (H * 0.72 - 24) / d.bh);
   const g = ctx.createLinearGradient(0, 0, 0, H);
   const bgTop = [lerp(215, 12, dark), lerp(221, 14, dark), lerp(228, 20, dark)];
   const bgBot = [lerp(190, 6, dark), lerp(196, 8, dark), lerp(205, 12, dark)];
