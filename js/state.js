@@ -127,7 +127,25 @@ function loadConfig() {
   return { ...DEFAULT_CONFIG };
 }
 export function saveConfig() {
+  config._cfgAt = Date.now(); // 어느 설정이 더 최신인지 비교용 (파일·서버 배포와 충돌 방지)
   localStorage.setItem(CONFIG_KEY, JSON.stringify(config));
+}
+
+// ---- 수업 설정 파일 배포 (GitHub 저장소의 class-config.json) ----
+// 서버 없이도 동작: 관리자가 내려받은 설정 파일을 저장소에 올려 두면
+// 학생 앱이 시작할 때 읽어 적용한다. 로컬 설정이 더 최신이면 덮지 않는다.
+export async function fileConfigPull() {
+  try {
+    const res = await fetch('class-config.json', { cache: 'no-store' });
+    if (!res.ok) return false;
+    const pub = await res.json();
+    if (!pub || typeof pub !== 'object' || !Object.keys(pub).length) return false;
+    delete pub.adminPin; // 공개 저장소에 PIN이 실렸어도 받지 않는다
+    if ((pub._cfgAt || 0) <= (config._cfgAt || 0)) return false; // 내 설정이 더 최신
+    Object.assign(config, pub);
+    localStorage.setItem(CONFIG_KEY, JSON.stringify(config));
+    return true;
+  } catch (e) { return false; }
 }
 
 // ---- 수업 설정 자동 배포 (Supabase 연결 시) ----
@@ -158,6 +176,7 @@ export async function cloudPullConfig() {
     if (!rows.length || !rows[0].payload) return false;
     const pub = { ...rows[0].payload };
     CONFIG_SYNC_EXCLUDE.forEach(k => delete pub[k]);
+    if ((pub._cfgAt || 0) <= (config._cfgAt || 0)) return false; // 내 설정이 더 최신이면 유지
     Object.assign(config, pub);
     localStorage.setItem(CONFIG_KEY, JSON.stringify(config));
     return true;

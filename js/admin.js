@@ -267,7 +267,9 @@ function renderEntry() {
 // ---- 명단(학적)·그룹 관리 ----
 function downloadText(name, text) {
   const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob(['﻿' + text], { type: 'text/csv' }));
+  // JSON에는 BOM을 붙이면 파싱이 깨진다 — 엑셀용 CSV에만 붙인다
+  const bom = name.endsWith('.json') ? '' : '﻿';
+  a.href = URL.createObjectURL(new Blob([bom + text], { type: name.endsWith('.json') ? 'application/json' : 'text/csv' }));
   a.download = name;
   a.click();
   URL.revokeObjectURL(a.href);
@@ -949,6 +951,13 @@ export function initAdmin() {
     $('adm-code').value = exportConfigCode();
     $('adm-code').select();
     if (navigator.clipboard) navigator.clipboard.writeText($('adm-code').value).catch(() => {});
+  });
+  $('adm-cfg-file').addEventListener('click', () => {
+    collectSettings(); collectRubric(); collectFaq();
+    saveConfig(); // _cfgAt 갱신 — 학생 기기가 "더 최신 설정"으로 인식
+    const pub = { ...config };
+    delete pub.adminPin; // 공개 저장소에 PIN은 싣지 않는다 (Supabase 접속 정보는 공개 가능한 키라 포함)
+    downloadText('class-config.json', JSON.stringify(pub, null, 2));
   });
   $('adm-import').addEventListener('click', () => {
     try {
