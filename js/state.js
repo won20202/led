@@ -129,6 +129,40 @@ function loadConfig() {
 export function saveConfig() {
   localStorage.setItem(CONFIG_KEY, JSON.stringify(config));
 }
+
+// ---- 수업 설정 자동 배포 (Supabase 연결 시) ----
+// 관리자가 [설정 저장]하면 설정이 서버에 올라가고, 학생 앱은 시작할 때 자동으로 받아온다.
+// PIN과 서버 접속 정보는 배포에서 제외 (접속 정보는 기기별, PIN은 교사만).
+const CONFIG_SYNC_EXCLUDE = ['supabaseUrl', 'supabaseKey', 'adminPin'];
+export async function cloudPushConfig() {
+  const c = sb();
+  if (!c) return false;
+  const pub = { ...config };
+  CONFIG_SYNC_EXCLUDE.forEach(k => delete pub[k]);
+  try {
+    const res = await fetch(c.url, {
+      method: 'POST',
+      headers: { ...c.headers, Prefer: 'resolution=merge-duplicates' },
+      body: JSON.stringify({ id: 'config', ban: 0, num: 0, payload: pub, updated_at: new Date().toISOString() }),
+    });
+    return res.ok;
+  } catch (e) { return false; }
+}
+export async function cloudPullConfig() {
+  const c = sb();
+  if (!c) return false;
+  try {
+    const res = await fetch(`${c.url}?id=eq.config&select=payload`, { headers: c.headers });
+    if (!res.ok) return false;
+    const rows = await res.json();
+    if (!rows.length || !rows[0].payload) return false;
+    const pub = { ...rows[0].payload };
+    CONFIG_SYNC_EXCLUDE.forEach(k => delete pub[k]);
+    Object.assign(config, pub);
+    localStorage.setItem(CONFIG_KEY, JSON.stringify(config));
+    return true;
+  } catch (e) { return false; }
+}
 // ---- 입장 코드: PIN+날짜(+반·교시)에서 모든 기기가 똑같이 계산 — 서버·재배포 없이 유효 ----
 function dateStr() {
   const d = new Date();
@@ -429,7 +463,7 @@ async function cloudPull() {
 export async function cloudList() {
   const c = sb();
   if (!c) return null;
-  const res = await fetch(`${c.url}?select=id,ban,num,updated_at&order=ban,num`, { headers: c.headers });
+  const res = await fetch(`${c.url}?select=id,ban,num,updated_at&ban=gte.1&order=ban,num`, { headers: c.headers });
   if (!res.ok) throw new Error('불러오기 실패 ' + res.status);
   return res.json();
 }

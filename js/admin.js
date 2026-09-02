@@ -1,6 +1,6 @@
 // 관리자 모드: 로그인 화면의 [관리자] 버튼 또는 URL ?admin=1 → PIN 입력.
 import { config, saveConfig, exportConfigCode, importConfigCode, getMisses, clearMisses,
-         cloudList, cloudListBan, cloudGet, cloudDelete, setReadOnlyWork, DEFAULT_CONFIG, DEFAULT_RUBRIC,
+         cloudList, cloudListBan, cloudGet, cloudDelete, cloudPushConfig, setReadOnlyWork, DEFAULT_CONFIG, DEFAULT_RUBRIC,
          sheetLogFor, sheetFlushNow, todayCode, classSessionCode, studentDayCode,
          makeSid, parseSid, weekKeyOf, timetableForWeek, runsOf, todayRuns,
          rosterActive, BLOCKED_STATUS } from './state.js';
@@ -919,11 +919,15 @@ export function initAdmin() {
   });
   $('adm-pin').addEventListener('keydown', e => { if (e.key === 'Enter') $('adm-pin-btn').click(); });
 
-  $('adm-save').addEventListener('click', () => {
+  $('adm-save').addEventListener('click', async () => {
     collectSettings(); collectRubric(); collectFaq();
     saveConfig();
     renderSettings(); renderEntry(); // 코드 배너·시간표 갱신
-    alert('저장되었습니다. 학생 화면은 새로고침하면 반영됩니다.');
+    // Supabase가 연결돼 있으면 설정을 서버로 올려 모든 학생 기기에 자동 배포
+    const pushed = await cloudPushConfig();
+    alert(pushed
+      ? '저장되었습니다. 서버에도 올라가서 학생 화면은 새로고침하면 자동으로 이 설정을 받습니다.'
+      : '저장되었습니다. (서버 미연결 — 다른 기기에는 설정 코드로 배포하세요)');
   });
   $('adm-gas-copy').addEventListener('click', () => {
     $('adm-gas').select();

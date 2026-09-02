@@ -130,3 +130,12 @@ initAssembly();
 initPreview();
 initFaq();
 initAdmin();
+
+// 서버(Supabase)가 연결돼 있으면 선생님이 저장한 수업 설정을 자동으로 받아온다
+// (LED 수·글자 수·평가 기준·시간표·명단 등 — 학생이 따로 설정 코드를 넣을 필요 없음)
+state.cloudPullConfig().then(ok => {
+  if (ok) {
+    refreshLoginUI(); // 입장 방식·학번 자리수가 바뀌었을 수 있다
+    document.dispatchEvent(new CustomEvent('work-loaded')); // 각 탭이 새 설정으로 다시 그림
+  }
+});
