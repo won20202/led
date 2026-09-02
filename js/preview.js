@@ -21,7 +21,8 @@ function paintAmbient(c2, litArr, alphaScale) {
     r += L.rgb[0]; g += L.rgb[1]; b += L.rgb[2]; n++;
   }
   if (!n || sum <= 0) return;
-  const a = Math.min(0.5, 0.09 * sum) * alphaScale;
+  // 트레이싱지 산란: 하나만 켜져도 글자 전체가 어느 정도는 빛난다 (위치에 따라 밝기 차이만)
+  const a = Math.min(0.55, 0.16 + 0.07 * sum) * alphaScale;
   c2.fillStyle = `rgba(${Math.round(r / n)},${Math.round(g / n)},${Math.round(b / n)},${a})`;
   c2.fillRect(0, 0, c2.canvas.width, c2.canvas.height);
 }
@@ -47,6 +48,14 @@ function paintGlow(c2, L, d, depth, RA, alphaScale) {
   grad.addColorStop(1, 'rgba(0,0,0,0)');
   c2.fillStyle = grad;
   c2.fillRect(0, 0, c2.canvas.width, c2.canvas.height);
+  if (back) {
+    // 깊이가 5cm 정도라 트레이싱지가 있어도 LED 바로 앞은 위치 티가 난다 — 밝은 핫스팟
+    const hot = c2.createRadialGradient(cx, cy, 0, cx, cy, Math.max(2, depth * 0.55 * RA));
+    hot.addColorStop(0, `rgba(255,255,255,${a * 0.65})`);
+    hot.addColorStop(1, 'rgba(255,255,255,0)');
+    c2.fillStyle = hot;
+    c2.fillRect(0, 0, c2.canvas.width, c2.canvas.height);
+  }
 }
 
 export function drawPreview() {
