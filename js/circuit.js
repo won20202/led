@@ -973,13 +973,12 @@ export function getLighting() {
   for (const [iStr, b] of Object.entries(litSet)) {
     const l = C.leds[+iStr];
     const mag = { rgb: rgbOf(l) };
+    // 접었을 때의 3D 위치로 앞판 기준 좌표를 구한다 — 옆면 LED는 그 가장자리에서 빛이 스며든다
     const k = faceOf(l) || 'back';
-    let face = 'back', fx = l.x, fy = l.y;
-    if (k === 'top') { face = 'top'; fy = 0; }
-    else if (k === 'bottom') { face = 'bottom'; fy = d.bh; }
-    else if (k === 'left') { face = 'left'; fx = 0; }
-    else if (k === 'right') { face = 'right'; fx = d.bw; }
-    out.lit.push({ face, fx, fy, b: Math.min(1, b), rgb: mag.rgb });
+    const p3 = to3Dp(l);
+    const fx = Math.max(0, Math.min(d.bw, p3.X));
+    const fy = Math.max(0, Math.min(d.bh, d.bh - p3.Y));
+    out.lit.push({ face: k, fx, fy, b: Math.min(1, b), rgb: mag.rgb });
   }
   geomLab = prevGeom;
   return out;

@@ -17,6 +17,48 @@ let analysis = null;
 function D() { return work.design; }
 function drawing() { D().drawing = D().drawing || { strokes: [] }; return D().drawing; }
 
+// ---- 캔바 등에서 만든 도안 이미지 (PNG 업로드) ----
+// 흰 바탕은 "남는 종이", 잉크가 있는 곳(검정 글씨·색 그림 모두)은 "오려낼 부분"이 된다.
+let imgMaskEl = null, imgColorEl = null; // 로드된 이미지 캐시
+function hasImage() { return !!(D().image && D().image.mask); }
+function loadImageEls() {
+  imgMaskEl = imgColorEl = null;
+  const im = D().image;
+  if (!im || !im.mask) return;
+  let left = 2;
+  const done = () => { if (--left === 0) refresh(true); };
+  imgMaskEl = new Image(); imgMaskEl.onload = done; imgMaskEl.src = im.mask;
+  imgColorEl = new Image(); imgColorEl.onload = done; imgColorEl.src = im.color || im.mask;
+}
+// 업로드된 이미지 → 마스크(잉크=흰, 배경=투명) + 표시용(잉크=원색) 두 장으로 변환해 저장
+function importImage(img) {
+  const MW = Math.round(config.frontW * 16), MH = Math.round(config.frontH * 16);
+  const oc = document.createElement('canvas');
+  oc.width = MW; oc.height = MH;
+  const c = oc.getContext('2d', { willReadFrequently: true });
+  c.fillStyle = '#fff'; c.fillRect(0, 0, MW, MH); // 투명 PNG는 흰 바탕으로 간주
+  c.drawImage(img, 0, 0, MW, MH);
+  const src = c.getImageData(0, 0, MW, MH);
+  const maskD = c.createImageData(MW, MH), colorD = c.createImageData(MW, MH);
+  for (let i = 0; i < MW * MH; i++) {
+    const r = src.data[i * 4], g = src.data[i * 4 + 1], b = src.data[i * 4 + 2];
+    const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+    if (lum < 200) { // 잉크로 판정 (흰 바탕이 아니면 오려낼 부분)
+      maskD.data[i * 4] = 255; maskD.data[i * 4 + 1] = 255; maskD.data[i * 4 + 2] = 255; maskD.data[i * 4 + 3] = 255;
+      colorD.data[i * 4] = r; colorD.data[i * 4 + 1] = g; colorD.data[i * 4 + 2] = b; colorD.data[i * 4 + 3] = 255;
+    }
+  }
+  c.putImageData(maskD, 0, 0);
+  const mask = oc.toDataURL('image/png');
+  c.putImageData(colorD, 0, 0);
+  const color = oc.toDataURL('image/png');
+  // 비율 검사: 앞면과 10% 넘게 다르면 경고 (적용은 하되 늘려 맞춘다)
+  const want = config.frontW / config.frontH, got = img.width / img.height;
+  const ratioOff = Math.abs(got - want) / want > 0.1;
+  D().image = { mask, color, srcW: img.width, srcH: img.height, ratioOff };
+  loadImageEls();
+}
+
 // 글자 목록 — 한 글자당 한 요소. 관리자 설정(글자 수·자유 모드)에 맞춰 길이를 정규화한다.
 // 배치·크기·간격은 자동으로 정해 주지 않는다 — 조건에 맞게 놓는 것까지가 학생의 설계 활동.
 // 새 글자는 기존 글자와 겹치지 않는 빈 자리에서 시작할 뿐이다.
@@ -70,6 +112,11 @@ function drawStrokes(c, scale, extra) {
   c.restore();
 }
 function drawAll(c, scale) {
+  if (hasImage()) { // 업로드한 도안이 있으면 그것이 곧 오려낼 모양
+    if (imgMaskEl && imgMaskEl.complete)
+      c.drawImage(imgMaskEl, 0, 0, config.frontW * scale, config.frontH * scale);
+    return;
+  }
   letters().forEach(l => drawLetter(c, scale, l));
   if (config.dDrawing !== false) drawStrokes(c, scale, null);
 }
@@ -188,6 +235,10 @@ function analyze() {
     return cnt;
   };
 
+  if (hasImage()) { // 이미지 도안: 전체 모양의 실측 bbox 하나만 (크기 조건은 캔바에서 정한 대로)
+    boxes.push(measure(raster(c2 => drawAll(c2, RA))));
+    return { cut, island, W, H, islandCount, perimeter, boxes, merged: [] };
+  }
   const Ls = letters();
   const merged = Ls.map(() => false);
   Ls.forEach((o, li) => {
@@ -261,8 +312,14 @@ function draw() {
     ctx.stroke(); ctx.setLineDash([]);
   }
 
-  letters().forEach(l => drawLetter(ctx, S, l));
-  if (config.dDrawing !== false) drawStrokes(ctx, S, drawingStroke);
+  if (hasImage()) {
+    // 업로드한 도안을 원래 색 그대로 보여준다 (오려낼 부분 = 빛이 나올 부분)
+    if (imgColorEl && imgColorEl.complete)
+      ctx.drawImage(imgColorEl, 0, 0, config.frontW * S, config.frontH * S);
+  } else {
+    letters().forEach(l => drawLetter(ctx, S, l));
+    if (config.dDrawing !== false) drawStrokes(ctx, S, drawingStroke);
+  }
 
   if (analysis) {
     const a = analysis;
@@ -297,6 +354,17 @@ function updatePanel() {
     html += `<p class="warn"><span class="dot red"></span> 오리면 떨어져 나가는 안쪽 조각이 ${a.islandCount}개 있습니다. 이 조각들을 어떻게 처리할지 포트폴리오에 적어 보세요.</p>`;
   const warns = [];
   const ax = (config.frontW - config.areaW) / 2, ay = (config.frontH - config.areaH) / 2;
+  if (hasImage()) { // 이미지 도안: 영역·비율·안쪽 조각만 안내 (모양은 캔바에서 정한 대로)
+    const b = a.boxes[0];
+    if (D().image.ratioOff)
+      warns.push(`올린 도안의 비율이 앞면(${config.frontW}×${config.frontH}cm)과 달라 늘려서 맞췄어요. 캔바에서 도안 크기를 확인해 보세요.`);
+    if (b && (b.x < ax - 0.05 || b.y < ay - 0.05 || b.x + b.w > ax + config.areaW + 0.05 || b.y + b.h > ay + config.areaH + 0.05))
+      warns.push(`도안이 작업 영역(${config.areaW}×${config.areaH}cm)을 벗어났어요. 가장자리 여백을 확인해 보세요.`);
+    warns.forEach(w => html += `<p class="hint">${w}</p>`);
+    if (!warns.length && b) html += `<p class="ok">도안이 앞면에 잘 맞습니다. [미리보기] 탭에서 빛이 새어 나오는 모습을 확인하세요.</p>`;
+    el.innerHTML = html;
+    return;
+  }
   const L = letters().length;
   const names = a.boxes.map((_, i) => i < L ? `글자 ${i + 1}` : '그림');
   const free = !!config.dFree; // 자유 모드: 크기·간격 조건 검사 없음
@@ -366,6 +434,21 @@ export function initDesign() {
     touch(); renderLetterRows(); refresh(true);
   });
 
+  // 캔바 등에서 만든 도안 PNG 업로드
+  $('d-img-file').addEventListener('change', e => {
+    const f = e.target.files[0];
+    e.target.value = '';
+    if (!f || readOnly) return;
+    const img = new Image();
+    img.onload = () => {
+      importImage(img);
+      touch(); renderLetterRows(); refresh(true);
+      sheetLog('도안', `이미지 업로드 (${img.width}×${img.height}px)`);
+    };
+    img.onerror = () => alert('이미지를 읽을 수 없어요. PNG/JPG 파일인지 확인해 주세요.');
+    img.src = URL.createObjectURL(f);
+  });
+
   document.querySelectorAll('#design-modes button').forEach(b =>
     b.addEventListener('click', () => setMode(b.dataset.m)));
   $('d-undo').addEventListener('click', () => {
@@ -400,6 +483,7 @@ export function initDesign() {
       }
       return;
     }
+    if (hasImage()) return; // 이미지 도안은 통째라 이동·크기 조절이 없다 (수정은 캔바에서)
     // move: 선택된 글자의 핸들을 잡았으면 크기 조절 시작 (일반 도형 편집처럼)
     if (selected >= 0 && analysis && analysis.boxes[selected]) {
       const b = analysis.boxes[selected];
@@ -480,6 +564,25 @@ export function initDesign() {
 
 // 글자 입력칸: 설정된 글자 수(또는 자유 모드의 현재 개수)만큼 동적으로 만든다
 function renderLetterRows() {
+  // 업로드 안내와 상태 (앞면 크기는 관리자 설정을 따른다)
+  $('d-img-hint').innerHTML = `캔바에서 <b>${config.frontW}×${config.frontH}cm</b>` +
+    ` (비율 ${config.frontW}:${config.frontH}, 예: ${config.frontW * 100}×${config.frontH * 100}px)로 만들어 PNG로 올리세요.` +
+    ' 흰 바탕에 그린 글씨·그림(색이 있어도 됨)이 오려낼 부분이 됩니다. 그대로 인쇄해 검정 도화지에 대고 파내면 돼요.';
+  const stat = $('d-img-status');
+  if (hasImage()) {
+    stat.innerHTML = `<p class="ok">도안 이미지 사용 중 (${D().image.srcW}×${D().image.srcH}px) <button id="d-img-del" class="small-btn">이미지 지우기</button></p>` +
+      '<p class="muted small">이미지를 지우면 아래 글자 입력 방식으로 돌아갑니다.</p>';
+    $('d-img-del').addEventListener('click', () => {
+      if (readOnly) return;
+      D().image = null; imgMaskEl = imgColorEl = null;
+      touch(); renderLetterRows(); refresh(true);
+    });
+    $('d-letter-list').innerHTML = '';
+    $('d-letter-add').classList.add('hidden');
+    $('d-drawing-sec').style.display = 'none';
+    return;
+  }
+  stat.innerHTML = '';
   const list = $('d-letter-list');
   const Ls = letters();
   const free = !!config.dFree;
@@ -507,6 +610,7 @@ function renderLetterRows() {
 export function refreshDesign() {
   const d = work.design;
   d.drawing = d.drawing || { strokes: [] };
+  loadImageEls(); // 저장된 도안 이미지가 있으면 다시 불러온다
   renderLetterRows();
   refresh(true);
 }
