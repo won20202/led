@@ -11,6 +11,29 @@ const DARK = 0.78; // 고정된 실내 어둡기 — 빛 색이 잘 보이는 �
 
 function lerp(a, b, t) { return a + (b - a) * t; }
 
+// LED 하나의 빛 번짐 — 뒷면 가운데쯤 달면 앞판 세로를 거의 다 비추고,
+// 위·아래로 치우치면 반대쪽 절반이 어두워지는 정도로 넉넉하게 퍼진다.
+function paintGlow(c2, L, d, depth, RA, alphaScale) {
+  const a = Math.min(1, L.b) * alphaScale;
+  const [r, g, b] = L.rgb;
+  const back = L.face === 'back';
+  let cx = Math.max(0, Math.min(c2.canvas.width, L.fx * RA));
+  let cy = Math.max(0, Math.min(c2.canvas.height, L.fy * RA));
+  const rad = (back ? Math.max(depth * 1.35, d.bh * 1.05) : d.bw * 0.35) * RA;
+  const grad = c2.createRadialGradient(cx, cy, 1, cx, cy, rad);
+  if (back) {
+    grad.addColorStop(0, `rgba(${r},${g},${b},${a})`);
+    grad.addColorStop(0.5, `rgba(${r},${g},${b},${a * 0.6})`);
+    grad.addColorStop(0.82, `rgba(${r},${g},${b},${a * 0.22})`);
+  } else { // 옆·위아래 면에서 스며드는 은은한 빛
+    grad.addColorStop(0, `rgba(${r},${g},${b},${a * 0.55})`);
+    grad.addColorStop(0.55, `rgba(${r},${g},${b},${a * 0.25})`);
+  }
+  grad.addColorStop(1, 'rgba(0,0,0,0)');
+  c2.fillStyle = grad;
+  c2.fillRect(0, 0, c2.canvas.width, c2.canvas.height);
+}
+
 export function drawPreview() {
   if (!cv) return;
   const dark = DARK;
@@ -47,23 +70,7 @@ export function drawPreview() {
     const c2 = lc.getContext('2d');
     c2.globalCompositeOperation = 'lighter';
     const boost = 0.45 + 0.55 * dark;
-    for (const L of light.lit) {
-      const a = Math.min(1, L.b) * boost;
-      const [r, gg, b] = L.rgb;
-      let cx = L.fx * RA, cy = L.fy * RA, rad;
-      if (L.face === 'back') {
-        rad = depth * 1.35 * RA; // 깊이가 얕으면 점이 도드라진다
-      } else {
-        rad = d.bw * 0.35 * RA;  // 옆·위아래에서 스며드는 은은한 빛
-        cx = Math.max(0, Math.min(lw, cx)); cy = Math.max(0, Math.min(lh, cy));
-      }
-      const grad = c2.createRadialGradient(cx, cy, 1, cx, cy, rad);
-      grad.addColorStop(0, `rgba(${r},${gg},${b},${L.face === 'back' ? a : a * 0.55})`);
-      grad.addColorStop(0.55, `rgba(${r},${gg},${b},${a * 0.25})`);
-      grad.addColorStop(1, 'rgba(0,0,0,0)');
-      c2.fillStyle = grad;
-      c2.fillRect(0, 0, lw, lh);
-    }
+    for (const L of light.lit) paintGlow(c2, L, d, depth, RA, boost);
     // 트레이싱지 확산: 저해상도 → 확대가 자연스러운 번짐이 된다
     c2.globalCompositeOperation = 'destination-in';
     c2.drawImage(mask.canvas, 0, 0, lw, lh);
@@ -107,19 +114,7 @@ export function drawLitFront(tctx, px, py, pw, ph, litOverride) {
   lc.width = lw; lc.height = lh;
   const c2 = lc.getContext('2d');
   c2.globalCompositeOperation = 'lighter';
-  for (const L of light.lit) {
-    const a = Math.min(1, L.b);
-    const [r, gg, b] = L.rgb;
-    let cx = L.fx * RA, cy = L.fy * RA;
-    const rad = L.face === 'back' ? depth * 1.35 * RA : d.bw * 0.35 * RA;
-    cx = Math.max(0, Math.min(lw, cx)); cy = Math.max(0, Math.min(lh, cy));
-    const grad = c2.createRadialGradient(cx, cy, 1, cx, cy, rad);
-    grad.addColorStop(0, `rgba(${r},${gg},${b},${L.face === 'back' ? a : a * 0.55})`);
-    grad.addColorStop(0.55, `rgba(${r},${gg},${b},${a * 0.25})`);
-    grad.addColorStop(1, 'rgba(0,0,0,0)');
-    c2.fillStyle = grad;
-    c2.fillRect(0, 0, lw, lh);
-  }
+  for (const L of light.lit) paintGlow(c2, L, d, depth, RA, 1);
   c2.globalCompositeOperation = 'destination-in';
   c2.drawImage(mask.canvas, 0, 0, lw, lh);
   tctx.imageSmoothingEnabled = true;
