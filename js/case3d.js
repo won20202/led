@@ -274,14 +274,22 @@ function assemble(logIt) {
   dirty = true;
 }
 
+// 설계 일지 — 탭마다 자기 기록만 보여준다 (전체 기록은 데이터·시트에 그대로 남는다)
 export function renderLogList() {
-  const el = $('case-log');
-  if (!el) return;
-  // 케이스 탭에는 케이스(치수·조립) 기록만 — 회로·조립 순서 기록은 데이터로만 남는다
-  const caseRows = work.log.filter(l => !String(l).includes('회로 —') && !String(l).includes('조립 순서 —'));
-  el.innerHTML = caseRows.length
-    ? caseRows.slice(-12).map(l => `<div>${l}</div>`).join('')
-    : '<div class="muted">조립할 때마다 기록이 쌓입니다. 포트폴리오 자기 평가에 활용하세요.</div>';
+  const fill = (id, pred, empty) => {
+    const el = $(id);
+    if (!el) return;
+    const rows = work.log.filter(l => pred(String(l)));
+    el.innerHTML = rows.length
+      ? rows.slice(-12).map(l => `<div>${l}</div>`).join('')
+      : `<div class="muted">${empty}</div>`;
+  };
+  fill('case-log', l => !l.includes('회로 —') && !l.includes('조립 순서 —'),
+    '조립할 때마다 기록이 쌓입니다. 포트폴리오 자기 평가에 활용하세요.');
+  fill('circuit-log', l => l.includes('회로 —'),
+    '스위치를 켤 때마다 점등 결과가 기록됩니다.');
+  fill('order-log', l => l.includes('조립 순서 —'),
+    '조립 순서를 끝까지 진행하면 결과가 기록됩니다.');
 }
 
 function bindInputs() {
