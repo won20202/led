@@ -110,7 +110,7 @@ function clearCanvas() {
   // 기기 화면(폭·높이)에 맞춰 최대한 크게 — 카드 목록(왼쪽 340px)을 뺀 나머지를 쓴다
   const host = cv.closest('.order-center') || cv.parentElement;
   const maxByH = Math.round(((window.innerHeight || 800) - 260) / 0.6);
-  const w = Math.max(520, Math.min(1400, maxByH, (host ? host.clientWidth : 960) - 370));
+  const w = Math.max(520, Math.min(1600, maxByH, (host ? host.clientWidth : 960) - 420));
   if (cv.width !== w) { cv.width = w; cv.height = Math.round(w * 0.6); }
   ctx.fillStyle = '#f4f6f9';
   ctx.fillRect(0, 0, cv.width, cv.height);
