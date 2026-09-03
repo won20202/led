@@ -116,8 +116,8 @@ function clearCanvas() {
   ctx.fillRect(0, 0, cv.width, cv.height);
 }
 function caption(text) {
-  // 캔버스 크기에 맞춰 캡션도 커진다 (노트북·큰 모니터에서 잘 보이게)
-  const fs = Math.max(13, Math.round(cv.width * 0.017));
+  // 캔버스 크기에 맞춰 캡션도 커진다 (크롬북에서도 또렷하게)
+  const fs = Math.min(26, Math.max(16, Math.round(cv.width * 0.021)));
   ctx.fillStyle = '#4a5561'; ctx.font = `${fs}px sans-serif`;
   ctx.fillText(text, 14, fs + 10);
 }
@@ -129,7 +129,7 @@ function sceneCut() {
   const S = Math.min(
     (cv.width - 80) / (d.bw + d.sw * 2 + 3),
     (cv.height - 110) / (d.bh + d.td * 2 + 2.5));
-  const fs = Math.max(11, Math.round(S * 1.1));
+  const fs = Math.min(24, Math.max(13, Math.round(S * 1.1)));
   const rect = (x, y, w, h, label) => {
     ctx.fillStyle = '#f7f3e8'; ctx.strokeStyle = '#a9946a';
     ctx.fillRect(x, y, w * S, h * S); ctx.strokeRect(x, y, w * S, h * S);
@@ -181,7 +181,7 @@ function scenePlace() {
   const d = dims();
   const gap = 18;
   const S = (cv.width - 100 - gap * 2) / (d.bw + d.sw * 2);
-  const fs0 = Math.max(13, Math.round(cv.width * 0.017));
+  const fs0 = Math.min(26, Math.max(16, Math.round(cv.width * 0.021)));
   const capH = fs0 * 2 + 34; // 캡션 두 줄 자리
   // 캔버스 높이를 내용에 딱 맞게 — 아래 빈 공간 없이
   const needH = capH + Math.max(d.bh, d.sh) * S + 120;
@@ -193,7 +193,7 @@ function scenePlace() {
   ctx.fillText('스위치 면은 우드락에 붙이지 말고 바깥을 향하게!', 14, fs0 * 2 + 18);
   const totalW = (d.sw + d.bw + d.sw) * S + gap * 2;
   const x0 = (cv.width - totalW) / 2, py = capH + 26;
-  const fs = Math.max(11, Math.round(S * 0.9));
+  const fs = Math.min(22, Math.max(13, Math.round(S * 0.9)));
   const panels = [
     { face: 'left', px: x0, w: d.sw, h: d.sh, label: '왼쪽 옆면' },
     { face: 'back', px: x0 + d.sw * S + gap, w: d.bw, h: d.bh, label: '뒷면 바깥쪽' },
@@ -465,8 +465,8 @@ function playAnim(kind) {
   animId = requestAnimationFrame(loop);
 }
 function animCaption(c, text) {
-  c.fillStyle = '#2b3540'; c.font = 'bold 16px sans-serif'; c.textAlign = 'center';
-  c.fillText(text, 280, 236);
+  c.fillStyle = '#2b3540'; c.font = 'bold 18px sans-serif'; c.textAlign = 'center';
+  c.fillText(text, 280, 238);
 }
 // 피복 벗기기 — 실물 사진 구도 그대로:
 // 세워진 스트리퍼 날의 "크기별 구멍" 중 하나에 전선이 가로로 끼워져 있고,

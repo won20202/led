@@ -114,18 +114,20 @@ h4 { font-size: 13px; margin: 12px 0 6px; color: #4a5561; }
 .d-row .dl-size { width: 4.2em; flex: none; }
 #d-l1-text, #d-l2-text { width: 70px; font-size: 18px; text-align: center; }
 
-.order-card { display: block; width: 100%; text-align: left; margin: 5px 0; padding: 11px; font-size: 15px; }
+.order-card { display: block; width: 100%; text-align: left; margin: 5px 0; padding: 12px; font-size: 16px; }
 .order-card.placed { background: #eef6ff; border-color: #9cc3e8; }
 .order-card .num { display: inline-block; background: #2b6cb0; color: #fff; border-radius: 50%; width: 22px; height: 22px; text-align: center; line-height: 22px; margin-right: 6px; }
 #order-seq { max-width: 460px; }
 #order-result { margin-top: 12px; }
 /* 조립 순서 탭은 안내문이 핵심이라 글자를 큼직하게 */
-.order-center .hint, .order-center .muted, #order-result p { font-size: 16px; line-height: 1.7; }
+/* 조립 순서 탭 안내문 — 크롬북에서도 큼직하게, 화면 전체 폭으로 */
+.order-center .hint, .order-center .muted, #order-result p { font-size: 19px; line-height: 1.75; }
+#order-tip { width: 100%; }
 /* 안전 경고 — 크고 눈에 띄게 */
 .safety {
-  background: #fdeaea; border: 2px solid #e5484d; color: #b42318;
-  border-radius: 12px; padding: 12px 14px; margin: 10px 0;
-  font-size: 17px; font-weight: 700; line-height: 1.6;
+  background: #fdeaea; border: 3px solid #e5484d; color: #b42318;
+  border-radius: 12px; padding: 14px 16px; margin: 12px 0;
+  font-size: 21px; font-weight: 700; line-height: 1.65;
 }
 .anim-btn { font-size: 14px; margin: 6px 6px 6px 0; background: #eef4ff; border-color: #9cc3e8; }
 #order-anim canvas { max-width: 100%; background: #fff; border-radius: 12px; box-shadow: 0 1px 6px rgba(30,50,90,0.12); margin-top: 8px; }
@@ -202,6 +204,7 @@ button.link:hover { color: #4a5561; background: transparent; }
 .adm-row span { flex: 1; }
 
 /* 조립 순서 탭: 왼쪽 순서/결과 + 오른쪽 시뮬레이션 */
+.order-center { display: block !important; } /* 옛 캐시 CSS의 가로 배치를 확실히 무효화 */
 .order-cols { display: flex; gap: 18px; align-items: flex-start; }
 .order-left { width: 320px; min-width: 290px; }
 .order-right { flex: 1; min-width: 0; position: sticky; top: 0; }
