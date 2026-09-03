@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>LED 플래카드 설계 시뮬레이터</title>
-<link rel="stylesheet" href="css/style.css?v=3">
+<link rel="stylesheet" href="css/style.css?v=4">
 </head>
 <body>
 
@@ -313,6 +313,16 @@
       <div class="adm-panel" id="ap-faq">
         <div id="adm-faq"></div>
         <button id="adm-faq-add">+ 항목 추가</button>
+        <details class="adm-sub">
+          <summary>재료·도구 카드 문구 편집 (도움말에 표시)</summary>
+          <div id="adm-mats"></div>
+          <button id="adm-mat-add">+ 카드 추가</button>
+        </details>
+        <details class="adm-sub">
+          <summary>조립 순서 팁·안전 문구 편집</summary>
+          <p class="muted small">비워 두면 기본 문구가 쓰입니다. 굵게는 &lt;b&gt;굵게&lt;/b&gt;, 줄바꿈은 &lt;br&gt;.</p>
+          <div id="adm-otips"></div>
+        </details>
         <p class="muted small">저장하려면 [수업 설정] 탭의 [설정 저장]을 누르세요.</p>
       </div>
       <div class="adm-panel" id="ap-etc">

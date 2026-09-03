@@ -22,9 +22,9 @@ const CARDS = [
 ];
 const SHUFFLED = ['front', 'battery', 'cut', 'backclose', 'lightcheck', 'glue5', 'dryfit', 'finalcheck', 'wire'];
 
-const TIPS = {
-  cut: '우드락은 두께가 있어서 한 번에 꾹 눌러 자르면 단면이 뜯어져 지저분해져요. ' +
-    '① 자를 꽉 눌러 고정하고, 칼은 눕히지 말고 세워서 ② 첫 번째는 힘을 빼고 가볍게 그어 길을 내고 ③ 같은 자리를 2~3번 나눠 그어 끝까지 자르세요. ' +
+export const TIPS = {
+  cut: '① 자를 꽉 눌러 고정하고, 칼은 눕히지 말고 세우세요. ' +
+    '② 한 번에 집중해서 끝까지 그어 자르세요 — 여러 번 나눠 그으면 칼길이 어긋나 단면이 지저분해져요. ' +
     '잘 안 들면 칼날이 무뎌진 거예요 — 선생님께 말씀드려 새 날로 바꾸세요.',
   dryfit: '풀로 붙이기 전에 맞춰만 보는 단계예요. 지금 치수가 틀린 걸 발견하면 우드락을 다시 자를 기회가 있어요.',
   front: '오려낸 안쪽 조각(ㅇ, ㅁ의 속)은 버리지 말고 모아 두세요. 트레이싱지를 붙인 뒤 제자리에 다시 붙이면 글자가 또렷해져요.',
@@ -48,13 +48,17 @@ const TIPS = {
 };
 
 // 단계별 안전 경고 — 크고 눈에 띄게 표시된다
-const SAFETY = {
+export const SAFETY = {
   cut: '⚠️ 커터칼 조심! 칼날은 항상 몸 바깥쪽으로, 자를 꼭 대고, 커팅 매트 위에서. 칼을 놓을 때는 날을 집어넣으세요. ⚠️ 우드락 아래에는 커팅 매트만! 설계 포트폴리오나 유인물을 깔고 자르면 종이까지 같이 잘려요.',
   front: '⚠️ 커터칼 정밀 작업! 종이를 돌려 가며 자르고, 칼이 나아가는 방향에 다른 손을 두지 마세요.',
   wire: '⚠️ LED 다리와 전선 끝은 뾰족해요 — 손바닥으로 쓸어 누르지 말고 손끝으로 다루세요.',
   battery: '⚠️ 송곳 조심! 뚫는 방향 반대편에 절대 손을 두지 마세요. ⚠️ 건전지 방향(+/−)을 꼭 확인 — 거꾸로 끼우거나 (+)(−)가 직접 만나면 뜨거워지고 불이 날 수 있어요!',
   lightcheck: '⚠️ 회로가 뜨겁거나 타는 냄새가 나면 바로 전지를 빼세요 — 어딘가 합선된 거예요.',
 };
+
+// 관리자가 설정에서 문구를 바꾸면 그 문구가 우선 (빈 값이면 기본 문구)
+const tipOf = id => (config.orderTips || {})[id] || TIPS[id];
+const safetyOf = id => (config.orderSafety || {})[id] || SAFETY[id];
 
 function card(id) { return CARDS.find(c => c.id === id); }
 function dims() {
@@ -340,10 +344,10 @@ function selectStep(i) {
   } else {
     // 정상 진행 단계 — 안전 경고(크게) + 팁 + (홀더 단계) 방법 애니메이션
     stopAnim();
-    let tipHtml = SAFETY[id] ? `<p class="safety">${SAFETY[id]}</p>` : '';
-    if (TIPS[id]) tipHtml += `<p class="hint">${TIPS[id]}</p>`;
+    let tipHtml = safetyOf(id) ? `<p class="safety">${safetyOf(id)}</p>` : '';
+    if (tipOf(id)) tipHtml += `<p class="hint">${tipOf(id)}</p>`;
     if (id === 'battery') {
-      tipHtml += `<p class="hint">${TIPS.battery2}</p>
+      tipHtml += `<p class="hint">${tipOf('battery2')}</p>
         <button class="anim-btn" data-anim="strip">▶ 피복 벗기는 법 (움직임으로 보기)</button>
         <button class="anim-btn" data-anim="awl">▶ 구멍 뚫고 전선 잇는 법</button>
         <div id="order-anim"></div>`;

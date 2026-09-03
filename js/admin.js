@@ -4,6 +4,7 @@ import { config, saveConfig, exportConfigCode, importConfigCode, getMisses, clea
          sheetLogFor, sheetFlushNow, todayCode, classSessionCode, studentDayCode,
          makeSid, parseSid, weekKeyOf, timetableForWeek, runsOf, todayRuns,
          rosterActive, BLOCKED_STATUS } from './state.js';
+import { TIPS as ORDER_TIPS, SAFETY as ORDER_SAFETY } from './assembly.js';
 
 const $ = id => document.getElementById(id);
 
@@ -412,6 +413,68 @@ function collectFaq() {
     if (q && a) items.push({ q, k: div.querySelector('.fk').value.trim(), a, tab: div.querySelector('.ft').value });
   });
   config.faq = items;
+  saveConfig();
+}
+
+// ---- 재료·도구 카드 편집 (도움말에 표시) ----
+function renderMatEditor() {
+  const mats = config.materials || [];
+  $('adm-mats').innerHTML = mats.map((m, i) =>
+    `<div class="adm-faq-item adm-mat-item" data-i="${i}">
+       <input class="mn" value="${esc(m.n)}" placeholder="재료 이름">
+       <textarea class="mf" rows="2" placeholder="설명 (한 줄에 하나씩)">${esc((m.f || []).join('\n'))}</textarea>
+       <input class="mt" value="${esc(m.t || '')}" placeholder="팁 한 줄">
+       <div><button class="mdel">삭제</button></div>
+     </div>`).join('');
+  $('adm-mats').querySelectorAll('.mdel').forEach((b, i) =>
+    b.addEventListener('click', () => { collectMats(); config.materials.splice(i, 1); saveConfig(); renderMatEditor(); }));
+}
+function collectMats() {
+  const items = [];
+  const palette = ['#f0e3c0', '#fff3b0', '#d7dde6', '#eef4f0', '#c9cdd3', '#d9e6d5', '#f3d9d3', '#dcd6ea'];
+  $('adm-mats').querySelectorAll('.adm-mat-item').forEach((div, i) => {
+    const n = div.querySelector('.mn').value.trim();
+    if (!n) return;
+    const old = (config.materials || [])[i] || {};
+    items.push({
+      n, c: old.c || palette[i % palette.length],
+      f: div.querySelector('.mf').value.split('\n').map(s => s.trim()).filter(Boolean),
+      t: div.querySelector('.mt').value.trim(),
+    });
+  });
+  config.materials = items;
+  saveConfig();
+}
+
+// ---- 조립 순서 팁·안전 문구 편집 (기본 문구 위에 덮어쓰기) ----
+const ORDER_LABELS = {
+  cut: '우드락 재단', dryfit: '가조립', front: '앞면 가공', wire: '회로 연결(테이프·LED)',
+  lightcheck: '점등 확인', glue5: '5면 조립', battery: '홀더 — 전선 피복 벗기기',
+  battery2: '홀더 — 송곳 구멍·전선 연결', finalcheck: '최종 점등 확인', backclose: '뒷면 조립',
+};
+function renderOrderTextEditor() {
+  const ov = config.orderTips || {}, sv = config.orderSafety || {};
+  $('adm-otips').innerHTML = Object.keys(ORDER_LABELS).map(id => `
+    <div class="adm-faq-item">
+      <b>${ORDER_LABELS[id]}</b>
+      ${ORDER_SAFETY[id] !== undefined ? `<label class="small">안전 경고</label>
+        <textarea class="osv" data-id="${id}" rows="2">${esc(sv[id] || ORDER_SAFETY[id])}</textarea>` : ''}
+      <label class="small">팁</label>
+      <textarea class="otv" data-id="${id}" rows="3">${esc(ov[id] || ORDER_TIPS[id] || '')}</textarea>
+    </div>`).join('');
+}
+function collectOrderTexts() {
+  const tips = {}, safe = {};
+  $('adm-otips').querySelectorAll('.otv').forEach(t => {
+    const v = t.value.trim();
+    if (v && v !== (ORDER_TIPS[t.dataset.id] || '')) tips[t.dataset.id] = v;
+  });
+  $('adm-otips').querySelectorAll('.osv').forEach(t => {
+    const v = t.value.trim();
+    if (v && v !== (ORDER_SAFETY[t.dataset.id] || '')) safe[t.dataset.id] = v;
+  });
+  config.orderTips = tips;
+  config.orderSafety = safe;
   saveConfig();
 }
 
@@ -885,7 +948,7 @@ export function initAdmin() {
     if ($('adm-pin').value !== config.adminPin) { $('adm-pin-err').textContent = 'PIN이 다릅니다.'; return; }
     $('adm-pin-gate').classList.add('hidden');
     $('adm-content').classList.remove('hidden');
-    renderSettings(); renderEntry(); renderRubric(); renderFaqEditor(); renderMisses(); renderWorks();
+    renderSettings(); renderEntry(); renderRubric(); renderFaqEditor(); renderMatEditor(); renderOrderTextEditor(); renderMisses(); renderWorks();
     renderRosterSummary(); renderGroups();
     $('adm-gas').value = APPS_SCRIPT;
     $('adm-roster-template').addEventListener('click', rosterTemplate);
@@ -922,7 +985,7 @@ export function initAdmin() {
   $('adm-pin').addEventListener('keydown', e => { if (e.key === 'Enter') $('adm-pin-btn').click(); });
 
   $('adm-save').addEventListener('click', async () => {
-    collectSettings(); collectRubric(); collectFaq();
+    collectSettings(); collectRubric(); collectFaq(); collectMats(); collectOrderTexts();
     saveConfig();
     renderSettings(); renderEntry(); // 코드 배너·시간표 갱신
     // Supabase가 연결돼 있으면 설정을 서버로 올려 모든 학생 기기에 자동 배포
@@ -946,14 +1009,19 @@ export function initAdmin() {
     config.faq.push({ q: '', k: '', a: '', tab: 'all' });
     renderFaqEditor();
   });
+  $('adm-mat-add').addEventListener('click', () => {
+    collectMats();
+    (config.materials = config.materials || []).push({ n: '', c: '#e8edf4', f: [], t: '' });
+    renderMatEditor();
+  });
   $('adm-export').addEventListener('click', () => {
-    collectSettings(); collectRubric(); collectFaq();
+    collectSettings(); collectRubric(); collectFaq(); collectMats(); collectOrderTexts();
     $('adm-code').value = exportConfigCode();
     $('adm-code').select();
     if (navigator.clipboard) navigator.clipboard.writeText($('adm-code').value).catch(() => {});
   });
   $('adm-cfg-file').addEventListener('click', () => {
-    collectSettings(); collectRubric(); collectFaq();
+    collectSettings(); collectRubric(); collectFaq(); collectMats(); collectOrderTexts();
     saveConfig(); // _cfgAt 갱신 — 학생 기기가 "더 최신 설정"으로 인식
     const pub = { ...config };
     delete pub.adminPin; // 공개 저장소에 PIN은 싣지 않는다 (Supabase 접속 정보는 공개 가능한 키라 포함)
@@ -963,7 +1031,7 @@ export function initAdmin() {
     try {
       importConfigCode($('adm-code').value);
       alert('설정을 불러왔습니다.');
-      renderSettings(); renderRubric(); renderFaqEditor();
+      renderSettings(); renderRubric(); renderFaqEditor(); renderMatEditor(); renderOrderTextEditor();
     } catch (e) { alert('설정 코드가 올바르지 않습니다.'); }
   });
   $('adm-miss-clear').addEventListener('click', () => { clearMisses(); renderMisses(); });
