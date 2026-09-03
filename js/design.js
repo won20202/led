@@ -19,18 +19,20 @@ function drawing() { D().drawing = D().drawing || { strokes: [] }; return D().dr
 
 // ---- 캔바 등에서 만든 도안 이미지 (PNG 업로드) ----
 // 흰 바탕은 "남는 종이", 잉크가 있는 곳(검정 글씨·색 그림 모두)은 "오려낼 부분"이 된다.
-let imgMaskEl = null, imgColorEl = null; // 로드된 이미지 캐시
+let imgMaskEl = null; // 로드된 마스크 이미지 캐시
 function hasImage() { return !!(D().image && D().image.mask); }
 function loadImageEls() {
-  imgMaskEl = imgColorEl = null;
+  imgMaskEl = null;
   const im = D().image;
   if (!im || !im.mask) return;
-  let left = 2;
-  const done = () => { if (--left === 0) refresh(true); };
-  imgMaskEl = new Image(); imgMaskEl.onload = done; imgMaskEl.src = im.mask;
-  imgColorEl = new Image(); imgColorEl.onload = done; imgColorEl.src = im.color || im.mask;
+  imgMaskEl = new Image();
+  imgMaskEl.onload = () => refresh(true);
+  imgMaskEl.src = im.mask;
 }
-// 업로드된 이미지 → 마스크(잉크=흰, 배경=투명) + 표시용(잉크=원색) 두 장으로 변환해 저장
+// 업로드된 이미지 → 마스크(잉크=흰, 배경=투명)로 변환해 저장.
+// 화면에도 흰색으로 보여준다 — 오려낸 곳으로 빛이 나오는 실물 그대로.
+// 이미지는 항상 앞면 전체(frontW×frontH)에 맞춘다. 작업 영역으로 줄이지 않는다 —
+// 캔바 파일을 그대로 인쇄해 쓰기 때문에 화면과 인쇄물이 1:1로 대응해야 한다.
 function importImage(img) {
   const MW = Math.round(config.frontW * 16), MH = Math.round(config.frontH * 16);
   const oc = document.createElement('canvas');
@@ -39,23 +41,20 @@ function importImage(img) {
   c.fillStyle = '#fff'; c.fillRect(0, 0, MW, MH); // 투명 PNG는 흰 바탕으로 간주
   c.drawImage(img, 0, 0, MW, MH);
   const src = c.getImageData(0, 0, MW, MH);
-  const maskD = c.createImageData(MW, MH), colorD = c.createImageData(MW, MH);
+  const maskD = c.createImageData(MW, MH);
   for (let i = 0; i < MW * MH; i++) {
     const r = src.data[i * 4], g = src.data[i * 4 + 1], b = src.data[i * 4 + 2];
     const lum = 0.299 * r + 0.587 * g + 0.114 * b;
     if (lum < 200) { // 잉크로 판정 (흰 바탕이 아니면 오려낼 부분)
       maskD.data[i * 4] = 255; maskD.data[i * 4 + 1] = 255; maskD.data[i * 4 + 2] = 255; maskD.data[i * 4 + 3] = 255;
-      colorD.data[i * 4] = r; colorD.data[i * 4 + 1] = g; colorD.data[i * 4 + 2] = b; colorD.data[i * 4 + 3] = 255;
     }
   }
   c.putImageData(maskD, 0, 0);
   const mask = oc.toDataURL('image/png');
-  c.putImageData(colorD, 0, 0);
-  const color = oc.toDataURL('image/png');
   // 비율 검사: 앞면과 10% 넘게 다르면 경고 (적용은 하되 늘려 맞춘다)
   const want = config.frontW / config.frontH, got = img.width / img.height;
   const ratioOff = Math.abs(got - want) / want > 0.1;
-  D().image = { mask, color, srcW: img.width, srcH: img.height, ratioOff };
+  D().image = { mask, srcW: img.width, srcH: img.height, ratioOff };
   loadImageEls();
 }
 
@@ -313,9 +312,9 @@ function draw() {
   }
 
   if (hasImage()) {
-    // 업로드한 도안을 원래 색 그대로 보여준다 (오려낼 부분 = 빛이 나올 부분)
-    if (imgColorEl && imgColorEl.complete)
-      ctx.drawImage(imgColorEl, 0, 0, config.frontW * S, config.frontH * S);
+    // 오려낼 부분을 흰색으로 — 실물에서 빛이 나올 곳. 앞면 전체(25×10)에 1:1로 맞춘다
+    if (imgMaskEl && imgMaskEl.complete)
+      ctx.drawImage(imgMaskEl, 0, 0, config.frontW * S, config.frontH * S);
   } else {
     letters().forEach(l => drawLetter(ctx, S, l));
     if (config.dDrawing !== false) drawStrokes(ctx, S, drawingStroke);
