@@ -121,6 +121,14 @@ h4 { font-size: 13px; margin: 12px 0 6px; color: #4a5561; }
 #order-result { margin-top: 12px; }
 /* 조립 순서 탭은 안내문이 핵심이라 글자를 큼직하게 */
 .order-right .hint, .order-right .muted, #order-result p { font-size: 15px; line-height: 1.65; }
+/* 안전 경고 — 크고 눈에 띄게 */
+.safety {
+  background: #fdeaea; border: 2px solid #e5484d; color: #b42318;
+  border-radius: 12px; padding: 12px 14px; margin: 10px 0;
+  font-size: 17px; font-weight: 700; line-height: 1.6;
+}
+.anim-btn { font-size: 14px; margin: 6px 6px 6px 0; background: #eef4ff; border-color: #9cc3e8; }
+#order-anim canvas { max-width: 100%; background: #fff; border-radius: 12px; box-shadow: 0 1px 6px rgba(30,50,90,0.12); margin-top: 8px; }
 .order-step { color: #1e8e4e; padding: 3px 0; }
 .order-fail { color: #c0392b; font-weight: 700; padding: 3px 0; }
 

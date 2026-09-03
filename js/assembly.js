@@ -27,11 +27,32 @@ const TIPS = {
   dryfit: '풀로 붙이기 전에 맞춰만 보는 단계예요. 지금 치수가 틀린 걸 발견하면 우드락을 다시 자를 기회가 있어요.',
   front: '오려낸 안쪽 조각(ㅇ, ㅁ의 속)은 버리지 말고 모아 두세요. 트레이싱지를 붙인 뒤 제자리에 다시 붙이면 글자가 또렷해져요.',
   wire: 'LED 다리를 양옆으로 벌려 "ㄴ"자로 눕혀 평평하게 만들어야 전도성 테이프에 잘 붙어요. 긴 다리가 (+)극입니다 — 헷갈리면 긴 다리에 매직으로 표시해 두세요.',
-  lightcheck: '전지를 잠시 대어 확인만 해요. 안 켜지는 LED가 있으면 긴 다리(+)가 (+)줄에 있는지, 다리가 테이프에 잘 눌려 있는지 확인하세요. 전선 피복은 와이어 스트리퍼의 0.6 구멍에 넣고 1cm쯤 돌려 벗겨요 — 손톱이나 이로 벗기면 다쳐요.',
+  lightcheck: '전지를 잠시 대어 확인만 해요. 안 켜지는 LED가 있으면 긴 다리(+)가 (+)줄에 있는지, 다리가 테이프에 잘 눌려 있는지 확인하세요.',
   glue5: '양면테이프나 목공풀로 붙이고, 안쪽 모서리를 스카치테이프로 한 번 더 보강하면 케이스가 튼튼해져요.',
-  battery: '① 뒷면(홀더 붙일 자리 근처)에 송곳으로 구멍을 뚫고 ② 와이어 스트리퍼로 피복을 벗긴 홀더 전선을 구멍으로 통과시켜 ③ 벗겨진 구리 부분을 안쪽 전도성 테이프 위에 붙이고 그 위를 테이프로 한 번 더 눌러 고정하세요. 빨간 전선은 (+)줄, 검정 전선은 (−)줄에! 건전지는 홀더 안의 +/− 그림 방향대로 — 거꾸로 끼우면 회로가 뜨거워지고 타는 냄새가 날 수 있어요.',
+  battery: '<b>전선 피복 벗기기 (와이어 스트리퍼)</b><br>' +
+    '① 전선 끝에서 손가락 한 마디(약 1cm)쯤 되는 지점을 스트리퍼 구멍에 물립니다. 구멍은 전선 굵기와 비슷해 보이는 것 중 살짝 커 보이는 구멍부터 시도하세요.<br>' +
+    '② 손잡이를 꽉 쥔 채, 전선 잡은 손과 스트리퍼를 서로 반대쪽으로 당깁니다.<br>' +
+    '③ 피복이 안 벗겨지고 미끄러지기만 하면 구멍이 큰 거예요 → 한 단계 작은 구멍으로. 구리 가닥이 끊기거나 전선이 뚝 끊어지면 구멍이 작은 거예요 → 한 단계 큰 구멍으로. 딱 맞는 구멍은 살짝만 당겨도 피복만 스르륵 벗겨집니다.<br>' +
+    '④ 벗긴 자리에 끊어진 구리 가닥이 보이면 그 부분을 잘라내고 다시 벗기세요.<br>' +
+    '⑤ 드러난 구리 가닥들을 손끝으로 비벼 꼬아 한 가닥처럼 만드세요 — 가닥이 삐져나와 옆 줄에 닿으면 합선이 돼요.',
+  battery2: '<b>송곳으로 구멍 뚫어 전선 넣기</b><br>' +
+    '① 구멍 위치 정하기: 홀더를 붙일 자리 바로 옆, 그리고 안쪽의 전도성 테이프 줄과 만나는 지점에 뚫어야 전선이 짧아도 닿아요. 빨간 전선용·검정 전선용 구멍 2개를 뚫는데, 두 구멍은 손가락 두 개 폭쯤 떨어뜨리세요 — 안에서 두 전선의 구리가 서로 닿으면 합선이에요.<br>' +
+    '② 뚫는 법: 우드락 아래에 커팅 매트(또는 두꺼운 골판지)를 받치고, 송곳을 수직으로 세워 누르면서 천천히 돌려 뚫습니다.<br>' +
+    '③ 구멍 크기: 전선이 살짝 빡빡하게 들어갈 정도면 충분해요. 너무 크게 뚫으면 전선이 헐렁거리고 그 틈으로 빛이 새요.<br>' +
+    '④ 피복 벗긴 전선 끝을 바깥에서 안쪽으로 밀어 넣고, 안쪽에서 드러난 구리 부분을 해당 줄 테이프 위에 평평하게 눕힌 뒤, 그 위에 전도성 테이프 한 조각을 덧붙여 꾹 눌러 고정하세요. 빨간 전선은 (+)줄, 검정 전선은 (−)줄에!<br>' +
+    '⑤ 홀더는 전선을 다 연결한 뒤 양면테이프로 뒷면 바깥에 붙여요. 이때 <b>스위치와 전지 뚜껑이 보이는 면이 바깥</b>을 향해야 해요 — 스위치 면을 우드락에 붙여 버리면 켤 수도, 전지를 갈 수도 없어요! 전지가 든 홀더는 무게가 있으니 어디에 붙여야 플래카드가 안 넘어질지도 생각해 보세요.',
   finalcheck: '뒷면을 붙이기 전 마지막 점검이에요. 지금이라면 아직 손을 넣어 안쪽을 고칠 수 있어요.',
   backclose: '학번과 이름을 쓰고, 제출 전에 완성품 사진을 찍어 두는 것도 잊지 마세요.',
+};
+
+// 단계별 안전 경고 — 크고 눈에 띄게 표시된다
+const SAFETY = {
+  cut: '⚠️ 커터칼 조심! 칼날은 항상 몸 바깥쪽으로, 자를 꼭 대고, 커팅 매트 위에서. 칼을 놓을 때는 날을 집어넣으세요.',
+  front: '⚠️ 커터칼 정밀 작업! 종이를 돌려 가며 자르고, 칼이 나아가는 방향에 다른 손을 두지 마세요.',
+  wire: '⚠️ LED 다리와 전선 끝은 뾰족해요 — 손바닥으로 쓸어 누르지 말고 손끝으로 다루세요.',
+  battery: '⚠️ 송곳 조심! 뚫는 방향 반대편에 절대 손을 두지 마세요. ⚠️ 건전지 방향(+/−)을 꼭 확인 — 거꾸로 끼우거나 (+)(−)가 직접 만나면 뜨거워지고 불이 날 수 있어요!',
+  lightcheck: '⚠️ 회로가 뜨겁거나 타는 냄새가 나면 바로 전지를 빼세요 — 어딘가 합선된 거예요.',
+  glue5: '⚠️ 글루건을 쓴다면 노즐과 갓 나온 글루는 매우 뜨거워요 — 굳을 때까지 만지지 마세요.',
 };
 
 function card(id) { return CARDS.find(c => c.id === id); }
@@ -244,8 +265,19 @@ function selectStep(i) {
     ctx.fillText('이 순서로는 진행할 수 없어요', 20, 60);
     out.innerHTML = `<p class="warn">${v.msg}</p><p class="hint">카드를 다시 배열해 보세요.</p>`;
   } else {
-    // 정상 진행 단계
-    $('order-tip').innerHTML = TIPS[id] ? `<p class="hint">${TIPS[id]}</p>` : '';
+    // 정상 진행 단계 — 안전 경고(크게) + 팁 + (홀더 단계) 방법 애니메이션
+    stopAnim();
+    let tipHtml = SAFETY[id] ? `<p class="safety">${SAFETY[id]}</p>` : '';
+    if (TIPS[id]) tipHtml += `<p class="hint">${TIPS[id]}</p>`;
+    if (id === 'battery') {
+      tipHtml += `<p class="hint">${TIPS.battery2}</p>
+        <button class="anim-btn" data-anim="strip">▶ 피복 벗기는 법 (움직임으로 보기)</button>
+        <button class="anim-btn" data-anim="awl">▶ 구멍 뚫고 전선 잇는 법</button>
+        <div id="order-anim"></div>`;
+    }
+    $('order-tip').innerHTML = tipHtml;
+    $('order-tip').querySelectorAll('.anim-btn').forEach(b =>
+      b.addEventListener('click', () => playAnim(b.dataset.anim)));
     switch (id) {
       case 'cut': sceneCut(); break;
       case 'dryfit': sceneCase({ caption: '붙이지 않고 맞춰 보며 치수를 확인합니다', walls: 'dashed', circuit: false }); break;
@@ -326,6 +358,140 @@ export function initAssembly() {
   });
   render();
 }
+// ---- 방법 애니메이션 (피복 벗기기 / 송곳·전선 연결) ----
+let animId = null, animKind = null;
+function stopAnim() {
+  if (animId) cancelAnimationFrame(animId);
+  animId = null; animKind = null;
+  const box = $('order-anim');
+  if (box) box.innerHTML = '';
+}
+function playAnim(kind) {
+  if (animKind === kind) { stopAnim(); return; } // 같은 버튼 다시 누르면 닫기
+  stopAnim();
+  animKind = kind;
+  const box = $('order-anim');
+  if (!box) return;
+  box.innerHTML = '<canvas id="anim-cv" width="560" height="250"></canvas>';
+  const c = document.getElementById('anim-cv').getContext('2d');
+  const draw = kind === 'strip' ? drawStripAnim : drawAwlAnim;
+  draw(c, 0); // 누르자마자 첫 장면부터
+  const t0 = performance.now();
+  const loop = now => {
+    const t = ((now - t0) / 1000) % 7.5; // 7.5초 루프
+    draw(c, t);
+    animId = requestAnimationFrame(loop);
+  };
+  animId = requestAnimationFrame(loop);
+}
+function animCaption(c, text) {
+  c.fillStyle = '#2b3540'; c.font = 'bold 16px sans-serif'; c.textAlign = 'center';
+  c.fillText(text, 280, 236);
+}
+// 피복 벗기기: 물리기 → 당겨서 벗기기 → 구리 꼬기
+function drawStripAnim(c, t) {
+  c.setTransform(1, 0, 0, 1, 0, 0);
+  c.clearRect(0, 0, 560, 250); c.fillStyle = '#fbfcfe'; c.fillRect(0, 0, 560, 250);
+  const y = 110;
+  const phase = t < 2.5 ? 0 : t < 5 ? 1 : 2;
+  const p = phase === 0 ? t / 2.5 : phase === 1 ? (t - 2.5) / 2.5 : (t - 5) / 2.5;
+  // 전선: 피복(빨강)은 x 40~370, 벗겨질 조각은 370~460
+  c.lineCap = 'round';
+  c.strokeStyle = '#d63c34'; c.lineWidth = 12;
+  c.beginPath(); c.moveTo(40, y); c.lineTo(370, y); c.stroke();
+  const slide = phase === 1 ? p * 120 : phase === 2 ? 120 : 0; // 벗겨진 조각 이동
+  if (phase < 2) { // 피복 조각
+    c.beginPath(); c.moveTo(370 + slide, y); c.lineTo(460 + slide, y); c.stroke();
+  }
+  if (phase >= 1) { // 드러난 구리 가닥
+    c.strokeStyle = '#b9946a'; c.lineWidth = 2;
+    const tw = phase === 2 ? p : 0; // 꼬임 정도
+    for (let k = -1; k <= 1; k++) {
+      c.beginPath();
+      for (let x = 370; x <= 370 + Math.min(90, slide ? 90 : 0) + (phase === 2 ? 90 : 0); x += 4) {
+        const spread = 5 * (1 - tw);
+        c.lineTo(x, y + k * spread * Math.sin((x - 370) / 12 + k));
+      }
+      c.stroke();
+    }
+  }
+  // 스트리퍼 (노란 손잡이 + 검정 턱)
+  const jawX = 370, open = phase === 0 ? (1 - p) * 26 : 2;
+  c.save();
+  c.translate(jawX + (phase === 1 ? slide : 0), 0);
+  c.strokeStyle = '#222'; c.lineWidth = 9; c.lineCap = 'round';
+  c.beginPath(); c.moveTo(0, y - 8 - open); c.lineTo(34, y - 30 - open); c.stroke();
+  c.beginPath(); c.moveTo(0, y + 8 + open); c.lineTo(34, y + 30 + open); c.stroke();
+  c.strokeStyle = '#f2c214'; c.lineWidth = 13;
+  c.beginPath(); c.moveTo(34, y - 30 - open); c.lineTo(88, y - 66 - open); c.stroke();
+  c.beginPath(); c.moveTo(34, y + 30 + open); c.lineTo(88, y + 66 + open); c.stroke();
+  c.restore();
+  if (phase === 2) { // 손끝 비비기
+    const fy = y + Math.sin(p * Math.PI * 6) * 5;
+    c.fillStyle = '#f3c9a5';
+    c.beginPath(); c.arc(430, fy - 12, 12, 0, 7); c.fill();
+    c.beginPath(); c.arc(430, fy + 12, 12, 0, 7); c.fill();
+  }
+  animCaption(c, phase === 0 ? '① 끝에서 1cm쯤을 알맞은 구멍에 물려요 (살짝 커 보이는 구멍부터)'
+    : phase === 1 ? '② 꽉 쥔 채 서로 반대쪽으로 당기면 피복만 쏙!'
+    : '③ 드러난 구리 가닥을 손끝으로 비벼 꼬아 한 가닥으로');
+}
+// 송곳 구멍 → 전선 통과 → 테이프로 고정 (옆에서 본 단면)
+function drawAwlAnim(c, t) {
+  c.setTransform(1, 0, 0, 1, 0, 0);
+  c.clearRect(0, 0, 560, 250); c.fillStyle = '#fbfcfe'; c.fillRect(0, 0, 560, 250);
+  const phase = t < 2.5 ? 0 : t < 5 ? 1 : 2;
+  const p = phase === 0 ? t / 2.5 : phase === 1 ? (t - 2.5) / 2.5 : (t - 5) / 2.5;
+  // 매트(아래) + 우드락 판(단면) — 위 = 바깥, 아래 = 케이스 안쪽
+  c.fillStyle = '#3f7d4e'; c.fillRect(60, 190, 440, 16);
+  c.fillStyle = '#f3efe4'; c.strokeStyle = '#c9c2ae';
+  c.fillRect(80, 120, 400, 34); c.strokeRect(80, 120, 400, 34);
+  c.fillStyle = '#98a1ab'; c.font = '12px sans-serif'; c.textAlign = 'left';
+  c.fillText('바깥쪽', 84, 114); c.fillText('케이스 안쪽', 84, 178);
+  // 안쪽 전도성 테이프 줄
+  c.fillStyle = '#c3c9d2'; c.fillRect(200, 154, 160, 7);
+  c.fillStyle = '#d64545'; c.font = 'bold 12px sans-serif'; c.fillText('(+)줄', 366, 164);
+  const hx = 280; // 구멍 x
+  if (phase === 0) { // 송곳이 돌면서 관통
+    const depth = p * 60;
+    c.save();
+    c.translate(hx, 120 - 70 + depth * 0.6);
+    c.rotate(Math.sin(t * 12) * 0.06); // 돌리는 느낌
+    c.fillStyle = '#e85b9a'; c.beginPath(); c.roundRect(-9, -60, 18, 46, 8); c.fill();
+    c.strokeStyle = '#9aa2ac'; c.lineWidth = 4;
+    c.beginPath(); c.moveTo(0, -14); c.lineTo(0, 56); c.stroke();
+    c.restore();
+    if (p > 0.5) { c.strokeStyle = '#8a6d3f'; c.lineWidth = 3; c.beginPath(); c.moveTo(hx, 120); c.lineTo(hx, 154); c.stroke(); }
+  } else {
+    // 구멍
+    c.fillStyle = '#d8d2c2'; c.fillRect(hx - 3, 120, 6, 34);
+  }
+  if (phase === 1) { // 전선이 구멍으로 들어감
+    const reach = p;
+    c.strokeStyle = '#d63c34'; c.lineWidth = 5; c.lineCap = 'round';
+    c.beginPath(); c.moveTo(hx - 120, 60); c.quadraticCurveTo(hx - 20, 60, hx, Math.min(120 + reach * 60, 152)); c.stroke();
+    if (reach > 0.6) { // 안쪽으로 나온 구리
+      c.strokeStyle = '#b9946a'; c.lineWidth = 2.5;
+      c.beginPath(); c.moveTo(hx, 152); c.lineTo(hx + (reach - 0.6) * 90, 157); c.stroke();
+    }
+  }
+  if (phase === 2) { // 구리를 줄 위에 눕히고 테이프로 덮기
+    c.strokeStyle = '#d63c34'; c.lineWidth = 5; c.lineCap = 'round';
+    c.beginPath(); c.moveTo(hx - 120, 60); c.quadraticCurveTo(hx - 20, 60, hx, 152); c.stroke();
+    c.strokeStyle = '#b9946a'; c.lineWidth = 2.5;
+    c.beginPath(); c.moveTo(hx, 152); c.lineTo(hx + 55, 157); c.stroke();
+    // 덮는 테이프 조각이 내려와 꾹
+    const drop = Math.min(1, p * 1.6);
+    c.globalAlpha = 0.9;
+    c.fillStyle = '#aeb6c2';
+    c.fillRect(hx - 5, 130 + drop * 22, 70, 8);
+    c.globalAlpha = 1;
+  }
+  animCaption(c, phase === 0 ? '① 매트를 받치고 송곳을 돌리며 뚫어요 — 반대편에 손 금지!'
+    : phase === 1 ? '② 피복 벗긴 전선을 바깥에서 안쪽으로 통과'
+    : '③ 구리를 (+)줄 위에 눕히고 전도성 테이프로 덮어 꾹 (검정 전선은 (−)줄에)');
+}
+
 export function refreshAssembly() {
   if (!work.assembly) work.assembly = { holderPos: null };
   curStep = -1; placing = false;
