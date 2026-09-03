@@ -597,23 +597,32 @@ export function drawAssembled(tctx, rx, ry, rw, rh, opts = {}) {
       quad([toP(u0, v0, 0), toP(u1, v0, 0), toP(u1, v0, th), toP(u0, v0, th)], '#242c36', '#1a2129');
       quad([toP(u1, v0, 0), toP(u1, v1, 0), toP(u1, v1, th), toP(u1, v0, th)], '#242c36', '#1a2129');
       quad([toP(u0, v0, th), toP(u1, v0, th), toP(u1, v1, th), toP(u0, v1, th)], '#2f3844', '#1a2129');
-      // 스위치 (바깥면) — 슬라이드 홈 + 노브. 노브 위치로 ON/OFF가 보인다
-      const scu = hp.x, scv = hp.y - hh * 0.22;
-      const g0 = toP(scu - 0.85, scv - 0.3, th + 0.05), g1 = toP(scu + 0.85, scv - 0.3, th + 0.05),
-        g2 = toP(scu + 0.85, scv + 0.3, th + 0.05), g3 = toP(scu - 0.85, scv + 0.3, th + 0.05);
-      quad([g0, g1, g2, g3].map(p => p), '#11161c', '#0b0f13');
+      // 스위치·전선은 홀더 몸체에 고정 — [홀더 돌리기]로 돌리면 함께 돌아간다.
+      // 긴 축(lg)·짧은 축(sh2) 기준으로 그려서 가로/세로 어느 방향이든 같은 배치가 유지된다.
+      const lg = rot ? [0, 1] : [1, 0];   // 몸체 긴 축 (면 좌표 u,v 방향)
+      const s2 = rot ? [1, 0] : [0, 1];   // 몸체 짧은 축
+      const ew = rot ? [0, -1] : [-1, 0]; // 전선이 나가는 짧은 끝 방향
+      const HL = 6.4;
+      const scu = hp.x + ew[0] * HL * 0.22, scv = hp.y + ew[1] * HL * 0.22;
+      // 홈: 짧은 축을 따라 길게(±0.85), 긴 축으로 좁게(±0.3)
+      const gpt = (a, b, o) => toP(scu + s2[0] * a + lg[0] * b, scv + s2[1] * a + lg[1] * b, o);
+      const g0 = gpt(-0.85, -0.3, th + 0.05), g1 = gpt(0.85, -0.3, th + 0.05),
+        g2 = gpt(0.85, 0.3, th + 0.05), g3 = gpt(-0.85, 0.3, th + 0.05);
+      quad([g0, g1, g2, g3], '#11161c', '#0b0f13');
       const on = !!opts.holderOn;
       const k = on ? 0.35 : -0.35;
-      quad([toP(scu + k - 0.38, scv - 0.24, th + 0.1), toP(scu + k + 0.38, scv - 0.24, th + 0.1),
-        toP(scu + k + 0.38, scv + 0.24, th + 0.1), toP(scu + k - 0.38, scv + 0.24, th + 0.1)],
+      quad([gpt(k - 0.38, -0.24, th + 0.1), gpt(k + 0.38, -0.24, th + 0.1),
+        gpt(k + 0.38, 0.24, th + 0.1), gpt(k - 0.38, 0.24, th + 0.1)],
         on ? '#37c26e' : '#8a94a0', '#11161c');
       // 스위치 클릭 판정용 화면 영역 기록 (여유 포함)
       const pts = [g0, g1, g2, g3].map(p => pj(p));
       const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]);
       opts._switchRect = [Math.min(...xs) - 14, Math.min(...ys) - 14, Math.max(...xs) + 14, Math.max(...ys) + 14];
-      // 전선 살짝 (홀더에서 케이스 쪽으로) — 실물처럼 빨간(+)·검정(−) 두 가닥
-      [['#c23c34', -0.45], ['#20242a', 0.45]].forEach(([col, du]) => {
-        const wStart = pj(toP(hp.x + du, v0, th * 0.4)), wEnd = pj(toP(hp.x + du, Math.max(0.4, v0 - 1.2), 0));
+      // 전선 — 실물처럼 빨간(+)·검정(−) 두 가닥이 짧은 끝에서 나온다
+      [['#c23c34', -0.45], ['#20242a', 0.45]].forEach(([col, dv]) => {
+        const bu = hp.x + ew[0] * HL / 2 + s2[0] * dv, bv = hp.y + ew[1] * HL / 2 + s2[1] * dv;
+        const eu = Math.max(0.4, bu + ew[0] * 1.2), ev = Math.max(0.4, bv + ew[1] * 1.2);
+        const wStart = pj(toP(bu, bv, th * 0.4)), wEnd = pj(toP(eu, ev, 0));
         tctx.beginPath(); tctx.moveTo(wStart[0], wStart[1]); tctx.lineTo(wEnd[0], wEnd[1]);
         tctx.strokeStyle = 'rgba(235,238,243,0.75)'; tctx.lineWidth = 3.5; tctx.stroke(); // 어두운 벽 위에서도 보이게 밝은 테두리
         tctx.strokeStyle = col; tctx.lineWidth = 2; tctx.stroke();

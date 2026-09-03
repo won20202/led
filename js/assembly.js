@@ -206,6 +206,7 @@ function scenePlace() {
   ];
   const hp = work.assembly.holderPos;
   let overflow = false;
+  let rotBtn = null;
   panels.forEach(pn => {
     ctx.fillStyle = '#eceff3'; ctx.strokeStyle = '#b9c2cd';
     ctx.fillRect(pn.px, py, pn.w * S, pn.h * S); ctx.strokeRect(pn.px, py, pn.w * S, pn.h * S);
@@ -220,11 +221,34 @@ function scenePlace() {
       ctx.fillStyle = out ? 'rgba(226,60,60,0.75)' : '#3b4552';
       ctx.strokeStyle = out ? '#a52a2a' : '#20272f';
       ctx.beginPath(); ctx.roundRect(x - hw / 2 * S, y - hh / 2 * S, hw * S, hh * S, 5); ctx.fill(); ctx.stroke();
-      // 스위치 (항상 바깥쪽 면에 보인다)
+      // 스위치·전선은 몸체에 고정 — 세로로 돌리면 함께 돌아간다 (스위치는 전선 쪽 끝 근처)
       ctx.fillStyle = '#11161c';
-      ctx.fillRect(x - 0.9 * S, y - (hp.rot ? 1.6 : 0.9) * S, 1.8 * S, 0.62 * S);
+      if (hp.rot) ctx.fillRect(x - 0.9 * S, y - 1.6 * S, 1.8 * S, 0.62 * S);
+      else ctx.fillRect(x - 1.6 * S, y - 0.9 * S, 0.62 * S, 1.8 * S);
+      // 전선 두 가닥 (빨강 +, 검정 −) — 짧은 끝에서 나온다
+      [['#c23c34', -0.45], ['#20242a', 0.45]].forEach(([col, dv]) => {
+        ctx.strokeStyle = col; ctx.lineWidth = Math.max(2, S * 0.16);
+        ctx.beginPath();
+        if (hp.rot) { ctx.moveTo(x + dv * S, y - hh / 2 * S); ctx.lineTo(x + dv * S, y - (hh / 2 + 1.0) * S); }
+        else { ctx.moveTo(x - hw / 2 * S, y + dv * S); ctx.lineTo(x - (hw / 2 + 1.0) * S, y + dv * S); }
+        ctx.stroke();
+      });
       ctx.fillStyle = '#cfd6de'; ctx.font = `${fs}px sans-serif`;
       ctx.fillText('홀더', x - S * 0.8, y + S * 0.9);
+      // 홀더 옆에 떠 있는 회전 버튼 — 누르면 가로 ↔ 세로
+      const brx = Math.min(cv.width - 26, x + hw / 2 * S + 26), bry = Math.max(26, y - hh / 2 * S - 6);
+      ctx.beginPath(); ctx.arc(brx, bry, 17, 0, 7);
+      ctx.fillStyle = '#fff'; ctx.fill();
+      ctx.strokeStyle = '#8f9aa8'; ctx.lineWidth = 1.5; ctx.stroke();
+      ctx.beginPath(); ctx.arc(brx, bry, 9, -2.1, 2.4);
+      ctx.strokeStyle = '#2b6cb0'; ctx.lineWidth = 2.4; ctx.stroke();
+      const ax = brx + 9 * Math.cos(2.4), ay = bry + 9 * Math.sin(2.4);
+      ctx.fillStyle = '#2b6cb0';
+      ctx.beginPath(); ctx.moveTo(ax + 5 * Math.cos(2.4 + 1.57), ay + 5 * Math.sin(2.4 + 1.57));
+      ctx.lineTo(ax + 4 * Math.cos(2.4 - 0.5), ay + 4 * Math.sin(2.4 - 0.5));
+      ctx.lineTo(ax + 4 * Math.cos(2.4 + 3.14 + 0.5), ay + 4 * Math.sin(2.4 + 3.14 + 0.5));
+      ctx.fill();
+      rotBtn = { x: brx, y: bry, r: 22 };
     }
   });
   ctx.fillStyle = '#98a1ab'; ctx.font = `${fs}px sans-serif`;
@@ -233,7 +257,7 @@ function scenePlace() {
     ctx.fillStyle = '#c1362e'; ctx.font = `bold ${fs + 2}px sans-serif`;
     ctx.fillText('홀더가 면 밖으로 나가요 — 옮기거나 [홀더 돌리기]!', x0, py + Math.max(d.bh, d.sh) * S + fs * 2 + 16);
   }
-  cv._place = { panels, py, S, d };
+  cv._place = { panels, py, S, d, rotBtn };
   placing = true;
   cv.style.touchAction = 'none'; // 터치로 끌 때 화면이 같이 스크롤되지 않게
 }
@@ -252,17 +276,15 @@ function sceneFinal() {
   const pw = Math.min(cv.width - 120, (cv.height - 90) * d.bw / d.bh), ph = pw * d.bh / d.bw;
   const floorY = cv.height - 40;
   ctx.fillStyle = '#dcd2c2'; ctx.fillRect(0, floorY, cv.width, 40);
-  ctx.save();
+  drawLitFront(ctx, (cv.width - pw) / 2, floorY - ph, pw, ph, light);
   if (stable) {
     caption('완성품을 세워 봅니다');
-    drawLitFront(ctx, (cv.width - pw) / 2, floorY - ph, pw, ph, light);
   } else {
-    caption('완성품을 세워 보니…');
-    ctx.translate(cv.width / 2, floorY);
-    ctx.rotate(-1.25);
-    drawLitFront(ctx, -pw / 2, -ph + 8, pw, ph, light);
+    caption('완성품을 세워 봅니다 — 균형이 아슬아슬해요');
+    const fs = Math.min(24, Math.max(16, Math.round(cv.width * 0.018)));
+    ctx.fillStyle = '#c1362e'; ctx.font = `bold ${fs}px sans-serif`;
+    ctx.fillText('⚠️ 지금 홀더 위치는 무게중심이 높아 작은 충격에도 넘어질 수 있어요.', 20, cv.height - 12);
   }
-  ctx.restore();
   return stable;
 }
 
@@ -270,8 +292,9 @@ function sceneFinal() {
 function renderBatteryPanel() {
   const hp = work.assembly.holderPos;
   $('order-result').innerHTML = (hp
-    ? '<p class="muted">홀더를 누른 채 끌면 위치를 옮길 수 있어요. 다음 단계로 넘어가 보세요.</p>'
+    ? '<p class="muted">홀더를 누른 채 끌면 위치를 옮기고, 홀더 옆 파란 동그라미를 누르면 가로 ↔ 세로로 돌아가요.</p>'
     : '<p class="muted">뒷면·옆면 그림에서 홀더를 붙일 곳을 누르세요. 누른 채 끌면 자리를 옮길 수 있어요.</p>') +
+    '<p class="hint">전지가 든 홀더는 제법 무거워요. 붙이는 위치에 따라 무게중심이 달라져서, 자칫하면 완성품이 뒤로 넘어질 수 있어요 — 어디에 붙여야 든든하게 설지 생각해 보세요.</p>' +
     (hp ? '<button id="hp-rot" class="small-btn">홀더 돌리기 (가로 ↔ 세로)</button>' : '');
   const rb = $('hp-rot');
   if (rb) rb.addEventListener('click', () => {
@@ -376,14 +399,14 @@ function selectStep(i) {
               out.innerHTML = `<p class="ok">끝까지 진행되었습니다! 실제 제작도 이 순서대로 해 보세요.</p>`;
               addLog('조립 순서 — 끝까지 진행됨, 완성품이 잘 섬');
             } else {
-              out.innerHTML = `<p class="hint">플래카드가 넘어졌어요. 홀더가 받침 역할을 하려면 어디에 붙이는 게 좋을까요? (건전지 홀더 카드를 눌러 위치를 바꿔 보세요)</p>`;
-              addLog('조립 순서 — 완성했지만 넘어짐 (홀더 위치)');
+              out.innerHTML = `<p class="hint">완성은 했지만, 지금 홀더 위치라면 무게중심이 높아 플래카드가 넘어질 수 있어요. 전지가 든 홀더가 든든한 받침이 되려면 어디에 붙이는 게 좋을까요? (건전지 홀더 카드를 눌러 위치를 바꿔 보세요)</p>`;
+              addLog('조립 순서 — 완성, 홀더 위치가 불안정 (무게중심)');
             }
             renderLogList();
           } else {
             out.innerHTML = stable
               ? `<p class="ok">끝까지 진행되었습니다!</p>`
-              : `<p class="hint">플래카드가 넘어졌어요. 건전지 홀더 카드를 눌러 위치를 바꿔 보세요.</p>`;
+              : `<p class="hint">지금 홀더 위치라면 무게중심이 높아 플래카드가 넘어질 수 있어요. 건전지 홀더 카드를 눌러 위치를 바꿔 보세요.</p>`;
           }
           v.notes.forEach(n => out.innerHTML += `<p class="hint">${n}</p>`);
         } else {
@@ -427,6 +450,18 @@ export function initAssembly() {
   };
   cv.addEventListener('pointerdown', e => {
     if (!placing || readOnly) return;
+    // 홀더 옆 회전 버튼을 눌렀으면 가로 ↔ 세로
+    const pl = cv._place;
+    if (pl && pl.rotBtn) {
+      const r = cv.getBoundingClientRect();
+      const x = (e.clientX - r.left) * (cv.width / r.width);
+      const y = (e.clientY - r.top) * (cv.height / r.height);
+      if (Math.hypot(x - pl.rotBtn.x, y - pl.rotBtn.y) <= pl.rotBtn.r) {
+        work.assembly.holderPos.rot = work.assembly.holderPos.rot ? 0 : 1;
+        touch(); scenePlace();
+        return;
+      }
+    }
     if (!holderAt(e)) return;
     holderDrag = true;
     try { cv.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ }
