@@ -541,6 +541,16 @@ export function drawAssembled(tctx, rx, ry, rw, rh, opts = {}) {
 
   quad([P3(0, 0, 0), P3(d.bw, 0, 0), P3(d.bw, d.bh, 0), P3(0, d.bh, 0)],
     wallFill(lit ? 'rgba(60,58,50,0.9)' : 'rgba(247,243,232,0.95)'), line, walls === 'dashed');
+  // 완성 미리보기용: 앞면(트레이싱지 면)에 도안 화면을 그대로 입힌다 — 회전해도 따라간다
+  if (opts.frontCanvas) {
+    const s0 = pj(P3(0, d.bh, depth)), s1 = pj(P3(d.bw, d.bh, depth)), s2 = pj(P3(0, 0, depth));
+    const fw = opts.frontCanvas.width, fh = opts.frontCanvas.height;
+    tctx.save();
+    tctx.setTransform((s1[0] - s0[0]) / fw, (s1[1] - s0[1]) / fw,
+      (s2[0] - s0[0]) / fh, (s2[1] - s0[1]) / fh, s0[0], s0[1]);
+    tctx.drawImage(opts.frontCanvas, 0, 0);
+    tctx.restore();
+  }
   if (walls !== 'none') {
     const wallC = lit ? `rgba(70,74,86,${wallAlpha})` : `rgba(228,238,247,${wallAlpha})`;
     quad([P3(0.5, d.bh, 0), P3(0.5 + d.tw, d.bh, 0), P3(0.5 + d.tw, d.bh, depth), P3(0.5, d.bh, depth)], wallFill(wallC), line, walls === 'dashed');

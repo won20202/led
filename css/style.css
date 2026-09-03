@@ -106,6 +106,7 @@ h4 { font-size: 13px; margin: 12px 0 6px; color: #4a5561; }
 /* 회로 캔버스는 확대하면 실제로 커져야 한다 — 넘치는 부분은 스크롤.
    touch-action: 터치 제스처(끌기·두 손가락)를 캔버스가 직접 처리한다 */
 #circuit-canvas { max-width: none; touch-action: none; }
+#preview-canvas { touch-action: none; } /* 입체 미리보기 회전을 터치로도 */
 #preview-canvas { margin-top: 20px; }
 .dark-row { width: 500px; margin: 6px auto; }
 .d-row { display: flex; gap: 6px; align-items: center; margin: 4px 0; }
