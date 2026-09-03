@@ -181,12 +181,16 @@ function scenePlace() {
   const d = dims();
   const gap = 18;
   const S = (cv.width - 100 - gap * 2) / (d.bw + d.sw * 2);
-  const capH = Math.max(13, Math.round(cv.width * 0.017)) + 26;
+  const fs0 = Math.max(13, Math.round(cv.width * 0.017));
+  const capH = fs0 * 2 + 34; // 캡션 두 줄 자리
   // 캔버스 높이를 내용에 딱 맞게 — 아래 빈 공간 없이
   const needH = capH + Math.max(d.bh, d.sh) * S + 120;
   if (cv.height !== Math.round(needH)) { cv.height = Math.round(needH); }
   ctx.fillStyle = '#f4f6f9'; ctx.fillRect(0, 0, cv.width, cv.height);
-  caption('홀더를 붙일 곳을 클릭하세요 (뒷면·옆면 바깥쪽) — 스위치 면은 우드락에 붙이지 말고 바깥을 향하게!');
+  // 캡션은 두 줄로 — 좁은 화면에서도 잘리지 않게
+  ctx.fillStyle = '#4a5561'; ctx.font = `${fs0}px sans-serif`;
+  ctx.fillText('홀더를 붙일 곳을 클릭하세요 (뒷면·옆면 바깥쪽)', 14, fs0 + 10);
+  ctx.fillText('스위치 면은 우드락에 붙이지 말고 바깥을 향하게!', 14, fs0 * 2 + 18);
   const totalW = (d.sw + d.bw + d.sw) * S + gap * 2;
   const x0 = (cv.width - totalW) / 2, py = capH + 26;
   const fs = Math.max(11, Math.round(S * 0.9));
@@ -222,7 +226,7 @@ function scenePlace() {
   ctx.fillText('바닥 쪽 (아래)', x0, py + Math.max(d.bh, d.sh) * S + fs + 8);
   if (overflow) {
     ctx.fillStyle = '#c1362e'; ctx.font = `bold ${fs + 2}px sans-serif`;
-    ctx.fillText('홀더가 면 밖으로 나가요 — 자리를 옮기거나 [홀더 돌리기]로 방향을 바꿔 볼까요?', x0, py + Math.max(d.bh, d.sh) * S + fs * 2 + 16);
+    ctx.fillText('홀더가 면 밖으로 나가요 — 옮기거나 [홀더 돌리기]!', x0, py + Math.max(d.bh, d.sh) * S + fs * 2 + 16);
   }
   cv._place = { panels, py, S, d };
   placing = true;
