@@ -116,6 +116,7 @@ function clearCanvas() {
   const maxByH = Math.round(((window.innerHeight || 800) - 260) / 0.6);
   const w = Math.max(520, Math.min(1600, maxByH, (host ? host.clientWidth : 960) - 420));
   if (cv.width !== w) { cv.width = w; cv.height = Math.round(w * 0.6); }
+  cv.style.touchAction = ''; // 홀더 배치 장면에서만 다시 잠근다
   ctx.fillStyle = '#f4f6f9';
   ctx.fillRect(0, 0, cv.width, cv.height);
 }
@@ -234,6 +235,7 @@ function scenePlace() {
   }
   cv._place = { panels, py, S, d };
   placing = true;
+  cv.style.touchAction = 'none'; // 터치로 끌 때 화면이 같이 스크롤되지 않게
 }
 function sceneFinal() {
   clearCanvas();
@@ -268,8 +270,8 @@ function sceneFinal() {
 function renderBatteryPanel() {
   const hp = work.assembly.holderPos;
   $('order-result').innerHTML = (hp
-    ? '<p class="muted">다른 곳을 클릭해 위치를 바꿀 수 있어요. 다음 단계로 넘어가 보세요.</p>'
-    : '<p class="muted">화면의 뒷면·옆면 그림에서 홀더를 붙일 곳을 클릭하세요.</p>') +
+    ? '<p class="muted">홀더를 누른 채 끌면 위치를 옮길 수 있어요. 다음 단계로 넘어가 보세요.</p>'
+    : '<p class="muted">뒷면·옆면 그림에서 홀더를 붙일 곳을 누르세요. 누른 채 끌면 자리를 옮길 수 있어요.</p>') +
     (hp ? '<button id="hp-rot" class="small-btn">홀더 돌리기 (가로 ↔ 세로)</button>' : '');
   const rb = $('hp-rot');
   if (rb) rb.addEventListener('click', () => {
@@ -401,29 +403,52 @@ export function initAssembly() {
   ctx = cv.getContext('2d');
   idleCanvas();
 
-  cv.addEventListener('pointerdown', e => {
-    if (!placing || readOnly) return;
+  // 홀더 배치: 누르면 그 자리로 오고, 누른 채 끌면 따라온다 (놓을 때 0.5cm 격자에 스냅)
+  let holderDrag = false;
+  const holderAt = e => {
     const r = cv.getBoundingClientRect();
     const x = (e.clientX - r.left) * (cv.width / r.width);
     const y = (e.clientY - r.top) * (cv.height / r.height);
     const pl = cv._place;
-    if (!pl || !pl.panels) return;
-    // 어느 면(왼쪽 옆면/뒷면/오른쪽 옆면)을 클릭했는지
+    if (!pl || !pl.panels) return false;
+    // 어느 면(왼쪽 옆면/뒷면/오른쪽 옆면) 위인지 — 면 사이 빈틈은 가장 가까운 면으로 이어 준다
     const pn = pl.panels.find(q =>
-      x >= q.px && x <= q.px + q.w * pl.S && y >= pl.py && y <= pl.py + q.h * pl.S);
-    if (!pn) return;
+      x >= q.px - 12 && x <= q.px + q.w * pl.S + 12 && y >= pl.py - 12 && y <= pl.py + q.h * pl.S + 12);
+    if (!pn) return false;
     const prev = work.assembly.holderPos;
+    const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
     work.assembly.holderPos = {
       face: pn.face,
-      x: Math.round((x - pn.px) / pl.S * 2) / 2,
-      y: Math.round((y - pl.py) / pl.S * 2) / 2,
+      x: clamp((x - pn.px) / pl.S, 0, pn.w),
+      y: clamp((y - pl.py) / pl.S, 0, pn.h),
       rot: prev && prev.rot ? 1 : 0,
     };
+    return true;
+  };
+  cv.addEventListener('pointerdown', e => {
+    if (!placing || readOnly) return;
+    if (!holderAt(e)) return;
+    holderDrag = true;
+    try { cv.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ }
+    scenePlace();
+  });
+  cv.addEventListener('pointermove', e => {
+    if (!holderDrag || !placing) return;
+    e.preventDefault();
+    if (holderAt(e)) scenePlace();
+  });
+  const holderDrop = () => {
+    if (!holderDrag) return;
+    holderDrag = false;
+    const hp = work.assembly.holderPos;
+    if (hp) { hp.x = Math.round(hp.x * 2) / 2; hp.y = Math.round(hp.y * 2) / 2; }
     touch();
-    sheetLog('조립 — 홀더 위치', `${pn.face} x=${work.assembly.holderPos.x}, y=${work.assembly.holderPos.y}`);
+    sheetLog('조립 — 홀더 위치', `${hp.face} x=${hp.x}, y=${hp.y}`);
     scenePlace();
     renderBatteryPanel();
-  });
+  };
+  cv.addEventListener('pointerup', holderDrop);
+  cv.addEventListener('pointercancel', holderDrop);
 
   $('btn-order-prev').addEventListener('click', () => selectStep(curStep - 1));
   $('btn-order-next').addEventListener('click', () => selectStep(curStep + 1));

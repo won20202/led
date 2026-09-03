@@ -611,10 +611,13 @@ export function drawAssembled(tctx, rx, ry, rw, rh, opts = {}) {
       const pts = [g0, g1, g2, g3].map(p => pj(p));
       const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]);
       opts._switchRect = [Math.min(...xs) - 14, Math.min(...ys) - 14, Math.max(...xs) + 14, Math.max(...ys) + 14];
-      // 전선 살짝 (홀더에서 케이스 쪽으로)
-      const wStart = pj(toP(hp.x, v0, th * 0.4)), wEnd = pj(toP(hp.x, Math.max(0.4, v0 - 1.2), 0));
-      tctx.strokeStyle = '#c23c34'; tctx.lineWidth = 2;
-      tctx.beginPath(); tctx.moveTo(wStart[0], wStart[1]); tctx.lineTo(wEnd[0], wEnd[1]); tctx.stroke();
+      // 전선 살짝 (홀더에서 케이스 쪽으로) — 실물처럼 빨간(+)·검정(−) 두 가닥
+      [['#c23c34', -0.45], ['#20242a', 0.45]].forEach(([col, du]) => {
+        const wStart = pj(toP(hp.x + du, v0, th * 0.4)), wEnd = pj(toP(hp.x + du, Math.max(0.4, v0 - 1.2), 0));
+        tctx.beginPath(); tctx.moveTo(wStart[0], wStart[1]); tctx.lineTo(wEnd[0], wEnd[1]);
+        tctx.strokeStyle = 'rgba(235,238,243,0.75)'; tctx.lineWidth = 3.5; tctx.stroke(); // 어두운 벽 위에서도 보이게 밝은 테두리
+        tctx.strokeStyle = col; tctx.lineWidth = 2; tctx.stroke();
+      });
     }
   }
 
