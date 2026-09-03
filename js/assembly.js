@@ -124,23 +124,29 @@ function caption(text) {
 
 function sceneCut() {
   clearCanvas(); caption('우드락을 도면대로 재단합니다');
-  const d = dims(), S = Math.min(14, (cv.width - 60) / (d.bw + d.sw * 2 + 3));
+  // 화면(캔버스) 크기에 맞춰 조각들을 최대한 크게
+  const d = dims();
+  const S = Math.min(
+    (cv.width - 80) / (d.bw + d.sw * 2 + 3),
+    (cv.height - 110) / (d.bh + d.td * 2 + 2.5));
+  const fs = Math.max(11, Math.round(S * 1.1));
   const rect = (x, y, w, h, label) => {
     ctx.fillStyle = '#f7f3e8'; ctx.strokeStyle = '#a9946a';
     ctx.fillRect(x, y, w * S, h * S); ctx.strokeRect(x, y, w * S, h * S);
-    ctx.fillStyle = '#7b8794'; ctx.font = '11px sans-serif';
-    ctx.fillText(label, x + 4, y + 14);
+    ctx.fillStyle = '#7b8794'; ctx.font = `${fs}px sans-serif`;
+    ctx.fillText(label, x + 6, y + fs + 5);
   };
-  rect(20, 45, d.bw, d.bh, `뒷면 ${d.bw}×${d.bh}`);
-  rect(20, 55 + d.bh * S, d.tw, d.td, `위 ${d.tw}×${d.td}`);
-  rect(20, 65 + (d.bh + d.td) * S, d.tw, d.td, `아래 ${d.tw}×${d.td}`);
-  rect(30 + d.bw * S, 45, d.sw, d.sh, `옆 ${d.sw}×${d.sh}`);
-  rect(40 + (d.bw + d.sw) * S, 45, d.sw, d.sh, `옆 ${d.sw}×${d.sh}`);
+  const top = 50;
+  rect(20, top, d.bw, d.bh, `뒷면 ${d.bw}×${d.bh}`);
+  rect(20, top + 12 + d.bh * S, d.tw, d.td, `위 ${d.tw}×${d.td}`);
+  rect(20, top + 24 + (d.bh + d.td) * S, d.tw, d.td, `아래 ${d.tw}×${d.td}`);
+  rect(32 + d.bw * S, top, d.sw, d.sh, `옆 ${d.sw}×${d.sh}`);
+  rect(44 + (d.bw + d.sw) * S, top, d.sw, d.sh, `옆 ${d.sw}×${d.sh}`);
 }
 function sceneFront() {
   clearCanvas(); caption('앞면 검은 종이를 도안대로 오리고 트레이싱지를 붙입니다');
   const d = dims();
-  const pw = Math.min(cv.width - 60, d.bw * 16), ph = pw * d.bh / d.bw;
+  const pw = Math.min(cv.width - 60, (cv.height - 90) * d.bw / d.bh), ph = pw * d.bh / d.bw;
   const px = (cv.width - pw) / 2, py = (cv.height - ph) / 2 + 10;
   ctx.fillStyle = '#17181c'; ctx.fillRect(px, py, pw, ph);
   const mask = getDesignMask();
@@ -157,36 +163,70 @@ function sceneCase(opts) {
   clearCanvas(); caption(opts.caption);
   drawAssembled(ctx, 10, 26, cv.width - 20, cv.height - 36, opts);
 }
+// 홀더 실물 크기 (cm) — 가로 배치 기준. 옆면(폭 5cm)에 가로로 놓으면 삐져나가는 걸 눈으로 보게 된다
+const HOLDER_W = 6.4, HOLDER_H = 3.4;
+function holderSize(hp) { return hp && hp.rot ? [HOLDER_H, HOLDER_W] : [HOLDER_W, HOLDER_H]; }
 function scenePlace() {
   clearCanvas();
-  caption('건전지 홀더를 붙일 위치를 클릭하세요 (뒷면 바깥쪽) — 이 근처에 송곳 구멍을 뚫어 전선을 안으로 넣어요');
+  caption('홀더를 붙일 곳을 클릭하세요 (뒷면·옆면 바깥쪽) — 스위치 면은 우드락에 붙이지 말고 바깥을 향하게!');
   const d = dims();
-  const S = Math.min((cv.width - 80) / d.bw, (cv.height - 90) / d.bh);
-  const px = (cv.width - d.bw * S) / 2, py = 40;
-  ctx.fillStyle = '#eceff3'; ctx.strokeStyle = '#b9c2cd';
-  ctx.fillRect(px, py, d.bw * S, d.bh * S); ctx.strokeRect(px, py, d.bw * S, d.bh * S);
-  ctx.fillStyle = '#98a1ab'; ctx.font = '11px sans-serif';
-  ctx.fillText('뒷면 바깥쪽 (위)', px + 6, py + 14);
-  ctx.fillText('바닥 쪽 (아래)', px + 6, py + d.bh * S - 6);
+  const gap = 18;
+  const S = Math.min(
+    (cv.width - 100 - gap * 2) / (d.bw + d.sw * 2),
+    (cv.height - 120) / Math.max(d.bh, d.sh));
+  const totalW = (d.sw + d.bw + d.sw) * S + gap * 2;
+  const x0 = (cv.width - totalW) / 2, py = 52;
+  const fs = Math.max(11, Math.round(S * 0.9));
+  const panels = [
+    { face: 'left', px: x0, w: d.sw, h: d.sh, label: '왼쪽 옆면' },
+    { face: 'back', px: x0 + d.sw * S + gap, w: d.bw, h: d.bh, label: '뒷면 바깥쪽' },
+    { face: 'right', px: x0 + (d.sw + d.bw) * S + gap * 2, w: d.sw, h: d.sh, label: '오른쪽 옆면' },
+  ];
   const hp = work.assembly.holderPos;
-  if (hp) {
-    const hw = 5.5 * S, hh = 2.5 * S;
-    const x = px + hp.x * S, y = py + hp.y * S;
-    ctx.fillStyle = '#3b4552'; ctx.strokeStyle = '#20272f';
-    ctx.beginPath(); ctx.roundRect(x - hw / 2, y - hh / 2, hw, hh, 4); ctx.fill(); ctx.stroke();
-    ctx.fillStyle = '#cfd6de'; ctx.font = `${Math.max(9, S * 0.8)}px sans-serif`;
-    ctx.fillText('홀더', x - S, y + S * 0.3);
+  let overflow = false;
+  panels.forEach(pn => {
+    ctx.fillStyle = '#eceff3'; ctx.strokeStyle = '#b9c2cd';
+    ctx.fillRect(pn.px, py, pn.w * S, pn.h * S); ctx.strokeRect(pn.px, py, pn.w * S, pn.h * S);
+    ctx.fillStyle = '#98a1ab'; ctx.font = `${fs}px sans-serif`;
+    ctx.fillText(pn.label, pn.px + 4, py - 6);
+    if (hp && (hp.face || 'back') === pn.face) {
+      const [hw, hh] = holderSize(hp);
+      const x = pn.px + hp.x * S, y = py + hp.y * S;
+      // 면 밖으로 삐져나가면 표시가 달라진다
+      const out = hp.x - hw / 2 < -0.05 || hp.x + hw / 2 > pn.w + 0.05 || hp.y - hh / 2 < -0.05 || hp.y + hh / 2 > pn.h + 0.05;
+      overflow = overflow || out;
+      ctx.fillStyle = out ? 'rgba(226,60,60,0.75)' : '#3b4552';
+      ctx.strokeStyle = out ? '#a52a2a' : '#20272f';
+      ctx.beginPath(); ctx.roundRect(x - hw / 2 * S, y - hh / 2 * S, hw * S, hh * S, 5); ctx.fill(); ctx.stroke();
+      // 스위치 (항상 바깥쪽 면에 보인다)
+      ctx.fillStyle = '#11161c';
+      ctx.fillRect(x - 0.9 * S, y - (hp.rot ? 1.6 : 0.9) * S, 1.8 * S, 0.62 * S);
+      ctx.fillStyle = '#cfd6de'; ctx.font = `${fs}px sans-serif`;
+      ctx.fillText('홀더', x - S * 0.8, y + S * 0.9);
+    }
+  });
+  ctx.fillStyle = '#98a1ab'; ctx.font = `${fs}px sans-serif`;
+  ctx.fillText('바닥 쪽 (아래)', x0, py + Math.max(d.bh, d.sh) * S + fs + 8);
+  if (overflow) {
+    ctx.fillStyle = '#c1362e'; ctx.font = `bold ${fs + 2}px sans-serif`;
+    ctx.fillText('홀더가 면 밖으로 나가요 — 자리를 옮기거나 [홀더 돌리기]로 방향을 바꿔 볼까요?', x0, py + Math.max(d.bh, d.sh) * S + fs * 2 + 16);
   }
-  cv._place = { px, py, S, d };
+  cv._place = { panels, py, S, d };
   placing = true;
 }
 function sceneFinal() {
   clearCanvas();
   const d = dims();
   const hp = work.assembly.holderPos;
-  const stable = hp && hp.y > d.bh * 0.55 && hp.x > 2.5 && hp.x < d.bw - 2.5;
+  // 안정 판정: 어느 면이든 낮게(바닥 가까이) 붙어야 무게중심이 낮아 안 넘어진다.
+  // 옆면 부착은 무게가 한쪽으로 쏠리므로 뒷면보다 더 아래여야 안정적이다.
+  const face = hp && (hp.face || 'back');
+  const stable = hp && (
+    face === 'back'
+      ? hp.y > d.bh * 0.55 && hp.x > 2.5 && hp.x < d.bw - 2.5
+      : hp.y > d.sh * 0.7);
   const light = getLighting();
-  const pw = Math.min(cv.width - 120, d.bw * 15), ph = pw * d.bh / d.bw;
+  const pw = Math.min(cv.width - 120, (cv.height - 90) * d.bw / d.bh), ph = pw * d.bh / d.bw;
   const floorY = cv.height - 40;
   ctx.fillStyle = '#dcd2c2'; ctx.fillRect(0, floorY, cv.width, 40);
   ctx.save();
@@ -201,6 +241,21 @@ function sceneFinal() {
   }
   ctx.restore();
   return stable;
+}
+
+// 홀더 단계 안내 + [홀더 돌리기] 버튼 (배치 전·후 공통)
+function renderBatteryPanel() {
+  const hp = work.assembly.holderPos;
+  $('order-result').innerHTML = (hp
+    ? '<p class="muted">다른 곳을 클릭해 위치를 바꿀 수 있어요. 다음 단계로 넘어가 보세요.</p>'
+    : '<p class="muted">화면의 뒷면·옆면 그림에서 홀더를 붙일 곳을 클릭하세요.</p>') +
+    (hp ? '<button id="hp-rot" class="small-btn">홀더 돌리기 (가로 ↔ 세로)</button>' : '');
+  const rb = $('hp-rot');
+  if (rb) rb.addEventListener('click', () => {
+    if (readOnly || !work.assembly.holderPos) return;
+    work.assembly.holderPos.rot = work.assembly.holderPos.rot ? 0 : 1;
+    touch(); scenePlace();
+  });
 }
 
 // ---------- 화면 구성 ----------
@@ -315,8 +370,7 @@ function selectStep(i) {
       }
     }
     if (id === 'glue5') v.notes.forEach(n => out.innerHTML += `<p class="hint">${n}</p>`);
-    if (id === 'battery' && !work.assembly.holderPos)
-      out.innerHTML = '<p class="muted">화면의 뒷면 그림에서 홀더를 붙일 곳을 클릭하세요.</p>';
+    if (id === 'battery') renderBatteryPanel();
   }
   render();
 }
@@ -332,14 +386,22 @@ export function initAssembly() {
     const x = (e.clientX - r.left) * (cv.width / r.width);
     const y = (e.clientY - r.top) * (cv.height / r.height);
     const pl = cv._place;
-    if (!pl) return;
-    const cx = (x - pl.px) / pl.S, cy = (y - pl.py) / pl.S;
-    if (cx < 0 || cx > pl.d.bw || cy < 0 || cy > pl.d.bh) return;
-    work.assembly.holderPos = { x: Math.round(cx * 2) / 2, y: Math.round(cy * 2) / 2 };
+    if (!pl || !pl.panels) return;
+    // 어느 면(왼쪽 옆면/뒷면/오른쪽 옆면)을 클릭했는지
+    const pn = pl.panels.find(q =>
+      x >= q.px && x <= q.px + q.w * pl.S && y >= pl.py && y <= pl.py + q.h * pl.S);
+    if (!pn) return;
+    const prev = work.assembly.holderPos;
+    work.assembly.holderPos = {
+      face: pn.face,
+      x: Math.round((x - pn.px) / pl.S * 2) / 2,
+      y: Math.round((y - pl.py) / pl.S * 2) / 2,
+      rot: prev && prev.rot ? 1 : 0,
+    };
     touch();
-    sheetLog('조립 — 홀더 위치', `x=${work.assembly.holderPos.x}, y=${work.assembly.holderPos.y}`);
+    sheetLog('조립 — 홀더 위치', `${pn.face} x=${work.assembly.holderPos.x}, y=${work.assembly.holderPos.y}`);
     scenePlace();
-    $('order-result').innerHTML = '<p class="muted">위치를 정했습니다. 다른 곳을 클릭해 바꿀 수도 있어요. 다음 단계로 넘어가 보세요.</p>';
+    renderBatteryPanel();
   });
 
   $('btn-order-prev').addEventListener('click', () => selectStep(curStep - 1));
@@ -389,52 +451,64 @@ function animCaption(c, text) {
   c.fillStyle = '#2b3540'; c.font = 'bold 16px sans-serif'; c.textAlign = 'center';
   c.fillText(text, 280, 236);
 }
-// 피복 벗기기: 물리기 → 당겨서 벗기기 → 구리 꼬기
+// 피복 벗기기: 크기별 구멍이 보이는 스트리퍼에 물리고 → 전선을 당겨 빼면 피복 토막만 남는다 → 구리 꼬기
 function drawStripAnim(c, t) {
   c.setTransform(1, 0, 0, 1, 0, 0);
   c.clearRect(0, 0, 560, 250); c.fillStyle = '#fbfcfe'; c.fillRect(0, 0, 560, 250);
-  const y = 110;
+  const y = 100;
   const phase = t < 2.5 ? 0 : t < 5 ? 1 : 2;
   const p = phase === 0 ? t / 2.5 : phase === 1 ? (t - 2.5) / 2.5 : (t - 5) / 2.5;
-  // 전선: 피복(빨강)은 x 40~370, 벗겨질 조각은 370~460
+  const open = phase === 0 ? (1 - Math.min(1, p * 1.3)) * 20 : 0; // 턱 벌어짐 → 닫힘
+  const notches = [[320, 3.5], [356, 5], [392, 6.5], [428, 8]];   // 크기가 다른 구멍들
+  const grip = 356;                                               // 전선을 무는 구멍
+  // 스트리퍼: 위·아래 턱(마주 보는 반원 구멍) + 오른쪽 노란 손잡이 — 실물처럼
+  const jaw = dir => { // dir -1=위, +1=아래
+    const inner = y + dir * (open + 6.5);        // 물리는 면
+    const outer = y + dir * (open + 30);
+    c.fillStyle = '#23282f'; c.strokeStyle = '#14181d'; c.lineWidth = 1.5;
+    c.beginPath();
+    c.moveTo(295, inner); c.lineTo(455, inner); c.lineTo(475, outer); c.lineTo(295, outer);
+    c.closePath(); c.fill(); c.stroke();
+    // 마주 보는 반원 구멍 (크기 표시)
+    c.fillStyle = '#fbfcfe';
+    notches.forEach(([nx, r]) => {
+      c.beginPath(); c.arc(nx, inner, r, dir < 0 ? 0 : Math.PI, dir < 0 ? Math.PI : 0); c.fill();
+    });
+  };
+  jaw(-1); jaw(1);
+  // 손잡이
+  c.strokeStyle = '#f2c214'; c.lineWidth = 15; c.lineCap = 'round';
+  c.beginPath(); c.moveTo(470, y - open - 26); c.lineTo(540, y - open - 48); c.stroke();
+  c.beginPath(); c.moveTo(470, y + open + 26); c.lineTo(540, y + open + 48); c.stroke();
+
+  // 전선: 왼쪽이 벗길 끝(구멍에서 왼쪽으로 1cm 나와 있음).
+  // 몸통을 오른쪽으로 당기면 끝 피복 토막이 구멍에 걸려 남고, 구리가 드러난 채 빠져나온다
+  const tipLen = 55; // 벗겨질 끝 피복 (~1cm)
+  const slide = phase === 1 ? p * 130 : phase >= 2 ? 130 : 0;
   c.lineCap = 'round';
-  c.strokeStyle = '#d63c34'; c.lineWidth = 12;
-  c.beginPath(); c.moveTo(40, y); c.lineTo(370, y); c.stroke();
-  const slide = phase === 1 ? p * 120 : phase === 2 ? 120 : 0; // 벗겨진 조각 이동
-  if (phase < 2) { // 피복 조각
-    c.beginPath(); c.moveTo(370 + slide, y); c.lineTo(460 + slide, y); c.stroke();
+  if (phase >= 1) { // 구멍에 걸려 남은 피복 토막
+    c.strokeStyle = '#a83029'; c.lineWidth = 11;
+    c.beginPath(); c.moveTo(grip - tipLen, y); c.lineTo(grip - 4, y); c.stroke();
   }
-  if (phase >= 1) { // 드러난 구리 가닥
-    c.strokeStyle = '#b9946a'; c.lineWidth = 2;
-    const tw = phase === 2 ? p : 0; // 꼬임 정도
+  // 피복 몸통 — 구멍을 지나 오른쪽 화면 밖까지 (당기면 오른쪽으로 이동)
+  const bodyLeft = (phase === 0 ? grip - tipLen : grip) + slide;
+  c.strokeStyle = '#d63c34'; c.lineWidth = 11;
+  c.beginPath(); c.moveTo(bodyLeft, y); c.lineTo(560, y); c.stroke();
+  if (phase >= 1) { // 몸통 끝에 드러난 구리 (몸통과 함께 오른쪽으로)
+    const tw = phase === 2 ? Math.min(1, p * 1.4) : 0; // 꼬임 정도
+    c.strokeStyle = '#c58f4a'; c.lineWidth = 2;
     for (let k = -1; k <= 1; k++) {
       c.beginPath();
-      for (let x = 370; x <= 370 + Math.min(90, slide ? 90 : 0) + (phase === 2 ? 90 : 0); x += 4) {
-        const spread = 5 * (1 - tw);
-        c.lineTo(x, y + k * spread * Math.sin((x - 370) / 12 + k));
+      for (let x = 0; x <= 46; x += 4) {
+        const spread = 4.5 * (1 - tw) + 0.6;
+        const yy = y + k * spread * Math.sin(x / 9 + k);
+        if (x === 0) c.moveTo(bodyLeft - x, yy); else c.lineTo(bodyLeft - x, yy);
       }
       c.stroke();
     }
   }
-  // 스트리퍼 (노란 손잡이 + 검정 턱)
-  const jawX = 370, open = phase === 0 ? (1 - p) * 26 : 2;
-  c.save();
-  c.translate(jawX + (phase === 1 ? slide : 0), 0);
-  c.strokeStyle = '#222'; c.lineWidth = 9; c.lineCap = 'round';
-  c.beginPath(); c.moveTo(0, y - 8 - open); c.lineTo(34, y - 30 - open); c.stroke();
-  c.beginPath(); c.moveTo(0, y + 8 + open); c.lineTo(34, y + 30 + open); c.stroke();
-  c.strokeStyle = '#f2c214'; c.lineWidth = 13;
-  c.beginPath(); c.moveTo(34, y - 30 - open); c.lineTo(88, y - 66 - open); c.stroke();
-  c.beginPath(); c.moveTo(34, y + 30 + open); c.lineTo(88, y + 66 + open); c.stroke();
-  c.restore();
-  if (phase === 2) { // 손끝 비비기
-    const fy = y + Math.sin(p * Math.PI * 6) * 5;
-    c.fillStyle = '#f3c9a5';
-    c.beginPath(); c.arc(430, fy - 12, 12, 0, 7); c.fill();
-    c.beginPath(); c.arc(430, fy + 12, 12, 0, 7); c.fill();
-  }
-  animCaption(c, phase === 0 ? '① 끝에서 1cm쯤을 알맞은 구멍에 물려요 (살짝 커 보이는 구멍부터)'
-    : phase === 1 ? '② 꽉 쥔 채 서로 반대쪽으로 당기면 피복만 쏙!'
+  animCaption(c, phase === 0 ? '① 끝에서 1cm쯤을 굵기에 맞는 구멍에 넣고 손잡이를 꽉 쥐어요'
+    : phase === 1 ? '② 전선을 당기면 피복 토막만 구멍에 남고 구리가 드러나요'
     : '③ 드러난 구리 가닥을 손끝으로 비벼 꼬아 한 가닥으로');
 }
 // 송곳 구멍 → 전선 통과 → 테이프로 고정 (옆에서 본 단면)

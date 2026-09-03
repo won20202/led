@@ -533,14 +533,15 @@ export function drawAssembled(tctx, rx, ry, rw, rh, opts = {}) {
     tctx.setLineDash([]);
   };
   const P3 = (X, Y, Z) => ({ X, Y, Z });
-  const wallAlpha = walls === 'ghost' ? 0.22 : 0.55;
+  // opaque: 완성품 미리보기용 — 실물처럼 속이 비치지 않는다
+  const wallAlpha = opts.opaque ? 1 : walls === 'ghost' ? 0.22 : 0.55;
   const wallFill = c => walls === 'dashed' || walls === 'none' ? null : c;
   const line = walls === 'dashed' ? '#8a94a0' : '#7a8794';
 
   if (lit) { tctx.fillStyle = 'rgba(16,19,30,0.92)'; tctx.fillRect(rx, ry, rw, rh); }
 
   quad([P3(0, 0, 0), P3(d.bw, 0, 0), P3(d.bw, d.bh, 0), P3(0, d.bh, 0)],
-    wallFill(lit ? 'rgba(60,58,50,0.9)' : 'rgba(247,243,232,0.95)'), line, walls === 'dashed');
+    wallFill(opts.opaque ? (lit ? 'rgb(52,54,62)' : 'rgb(240,236,226)') : lit ? 'rgba(60,58,50,0.9)' : 'rgba(247,243,232,0.95)'), line, walls === 'dashed');
   // 완성 미리보기용: 앞면(트레이싱지 면)에 도안 화면을 그대로 입힌다 — 회전해도 따라간다
   if (opts.frontCanvas) {
     const s0 = pj(P3(0, d.bh, depth)), s1 = pj(P3(d.bw, d.bh, depth)), s2 = pj(P3(0, 0, depth));
@@ -551,8 +552,44 @@ export function drawAssembled(tctx, rx, ry, rw, rh, opts = {}) {
     tctx.drawImage(opts.frontCanvas, 0, 0);
     tctx.restore();
   }
+  // 건전지 홀더 — 조립 순서에서 정한 위치(뒷면/옆면, 가로/세로)에 실물처럼 붙는다
+  if (opts.holder) {
+    const hp = opts.holder;
+    const face = hp.face || 'back';
+    const rot = hp.rot ? 1 : 0;
+    const hw = rot ? 3.4 : 6.4, hh = rot ? 6.4 : 3.4, th = 1.7; // 면 위 가로×세로, 돌출 두께
+    const toP = (u, v, o) =>
+      face === 'back' ? P3(u, d.bh - v, -o)
+      : face === 'left' ? P3(-o, d.bh - v, u)
+      : P3(d.bw + o, d.bh - v, u);
+    const u0 = hp.x - hw / 2, u1 = hp.x + hw / 2, v0 = hp.y - hh / 2, v1 = hp.y + hh / 2;
+    // 몸체: 붙는 면→바깥면 순으로 측면 2개 + 바깥면
+    quad([toP(u0, v0, 0), toP(u1, v0, 0), toP(u1, v0, th), toP(u0, v0, th)], '#242c36', '#1a2129');
+    quad([toP(u1, v0, 0), toP(u1, v1, 0), toP(u1, v1, th), toP(u1, v0, th)], '#242c36', '#1a2129');
+    quad([toP(u0, v0, th), toP(u1, v0, th), toP(u1, v1, th), toP(u0, v1, th)], '#2f3844', '#1a2129');
+    // 스위치 (바깥면) — 슬라이드 홈 + 노브. 노브 위치로 ON/OFF가 보인다
+    const scu = hp.x, scv = hp.y - hh * 0.22;
+    const g0 = toP(scu - 0.85, scv - 0.3, th + 0.05), g1 = toP(scu + 0.85, scv - 0.3, th + 0.05),
+      g2 = toP(scu + 0.85, scv + 0.3, th + 0.05), g3 = toP(scu - 0.85, scv + 0.3, th + 0.05);
+    quad([g0, g1, g2, g3].map(p => p), '#11161c', '#0b0f13');
+    const on = !!opts.holderOn;
+    const k = on ? 0.35 : -0.35;
+    quad([toP(scu + k - 0.38, scv - 0.24, th + 0.1), toP(scu + k + 0.38, scv - 0.24, th + 0.1),
+      toP(scu + k + 0.38, scv + 0.24, th + 0.1), toP(scu + k - 0.38, scv + 0.24, th + 0.1)],
+      on ? '#37c26e' : '#8a94a0', '#11161c');
+    // 스위치 클릭 판정용 화면 영역 기록 (여유 포함)
+    const pts = [g0, g1, g2, g3].map(p => pj(p));
+    const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]);
+    opts._switchRect = [Math.min(...xs) - 14, Math.min(...ys) - 14, Math.max(...xs) + 14, Math.max(...ys) + 14];
+    // 전선 살짝 (홀더에서 케이스 쪽으로)
+    const wStart = pj(toP(hp.x, v0, th * 0.4)), wEnd = pj(toP(hp.x, Math.max(0.4, v0 - 1.2), 0));
+    tctx.strokeStyle = '#c23c34'; tctx.lineWidth = 2;
+    tctx.beginPath(); tctx.moveTo(wStart[0], wStart[1]); tctx.lineTo(wEnd[0], wEnd[1]); tctx.stroke();
+  }
   if (walls !== 'none') {
-    const wallC = lit ? `rgba(70,74,86,${wallAlpha})` : `rgba(228,238,247,${wallAlpha})`;
+    const wallC = opts.opaque
+      ? (lit ? 'rgb(58,62,72)' : 'rgb(232,238,244)')
+      : lit ? `rgba(70,74,86,${wallAlpha})` : `rgba(228,238,247,${wallAlpha})`;
     quad([P3(0.5, d.bh, 0), P3(0.5 + d.tw, d.bh, 0), P3(0.5 + d.tw, d.bh, depth), P3(0.5, d.bh, depth)], wallFill(wallC), line, walls === 'dashed');
     quad([P3(0.5, 0, 0), P3(0.5 + d.tw, 0, 0), P3(0.5 + d.tw, 0, depth), P3(0.5, 0, depth)], wallFill(wallC), line, walls === 'dashed');
     quad([P3(0, 0, 0), P3(0, d.bh, 0), P3(0, d.bh, depth), P3(0, 0, depth)], wallFill(wallC), line, walls === 'dashed');
