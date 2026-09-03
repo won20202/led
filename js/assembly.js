@@ -161,6 +161,16 @@ function sceneFront() {
 }
 function sceneCase(opts) {
   clearCanvas(); caption(opts.caption);
+  if (opts.front) {
+    // 앞면(글자 파인 검정 도화지+트레이싱지)이 이미 붙어 있는 단계 — 점등 여부는 opts.lit
+    const d = dims();
+    const fc = document.createElement('canvas');
+    fc.width = Math.round(d.bw * 24); fc.height = Math.round(d.bh * 24);
+    const light = getLighting();
+    drawLitFront(fc.getContext('2d'), 0, 0, fc.width, fc.height,
+      opts.lit ? light : { lit: [], tested: light.tested, dims: light.dims });
+    opts.frontCanvas = fc;
+  }
   drawAssembled(ctx, 10, 26, cv.width - 20, cv.height - 36, opts);
 }
 // 홀더 실물 크기 (cm) — 가로 배치 기준. 옆면(폭 5cm)에 가로로 놓으면 삐져나가는 걸 눈으로 보게 된다
@@ -168,14 +178,17 @@ const HOLDER_W = 6.4, HOLDER_H = 3.4;
 function holderSize(hp) { return hp && hp.rot ? [HOLDER_H, HOLDER_W] : [HOLDER_W, HOLDER_H]; }
 function scenePlace() {
   clearCanvas();
-  caption('홀더를 붙일 곳을 클릭하세요 (뒷면·옆면 바깥쪽) — 스위치 면은 우드락에 붙이지 말고 바깥을 향하게!');
   const d = dims();
   const gap = 18;
-  const S = Math.min(
-    (cv.width - 100 - gap * 2) / (d.bw + d.sw * 2),
-    (cv.height - 120) / Math.max(d.bh, d.sh));
+  const S = (cv.width - 100 - gap * 2) / (d.bw + d.sw * 2);
+  const capH = Math.max(13, Math.round(cv.width * 0.017)) + 26;
+  // 캔버스 높이를 내용에 딱 맞게 — 아래 빈 공간 없이
+  const needH = capH + Math.max(d.bh, d.sh) * S + 120;
+  if (cv.height !== Math.round(needH)) { cv.height = Math.round(needH); }
+  ctx.fillStyle = '#f4f6f9'; ctx.fillRect(0, 0, cv.width, cv.height);
+  caption('홀더를 붙일 곳을 클릭하세요 (뒷면·옆면 바깥쪽) — 스위치 면은 우드락에 붙이지 말고 바깥을 향하게!');
   const totalW = (d.sw + d.bw + d.sw) * S + gap * 2;
-  const x0 = (cv.width - totalW) / 2, py = 52;
+  const x0 = (cv.width - totalW) / 2, py = capH + 26;
   const fs = Math.max(11, Math.round(S * 0.9));
   const panels = [
     { face: 'left', px: x0, w: d.sw, h: d.sh, label: '왼쪽 옆면' },
@@ -340,9 +353,9 @@ function selectStep(i) {
       case 'front': sceneFront(); break;
       case 'wire': sceneCase({ caption: '펼친 판의 안쪽 면에 테이프와 LED를 붙입니다', walls: 'ghost', lit: false }); break;
       case 'lightcheck': sceneCase({ caption: '전지를 잠시 대어 점등을 확인합니다', walls: 'ghost', lit: true }); break;
-      case 'glue5': sceneCase({ caption: '뒷면을 뺀 다섯 면을 조립합니다', walls: 'solid', lit: false }); break;
+      case 'glue5': sceneCase({ caption: '뒷면을 뺀 다섯 면을 조립합니다 — 앞면(도안)이 붙고, 뒷자리는 아직 비어 있어요', walls: 'solid', lit: false, front: true, noBack: true }); break;
       case 'battery': scenePlace(); break;
-      case 'finalcheck': sceneCase({ caption: '뒷면을 붙이기 전 마지막 점등 확인', walls: 'solid', lit: true }); break;
+      case 'finalcheck': sceneCase({ caption: '뒷면을 붙이기 전 마지막 점등 확인', walls: 'solid', lit: true, front: true, noBack: true, holder: work.assembly.holderPos, holderOn: true }); break;
       case 'backclose': {
         if (seq.length === CARDS.length && v.ok) {
           const stable = sceneFinal();
@@ -451,64 +464,70 @@ function animCaption(c, text) {
   c.fillStyle = '#2b3540'; c.font = 'bold 16px sans-serif'; c.textAlign = 'center';
   c.fillText(text, 280, 236);
 }
-// 피복 벗기기: 크기별 구멍이 보이는 스트리퍼에 물리고 → 전선을 당겨 빼면 피복 토막만 남는다 → 구리 꼬기
+// 피복 벗기기 — 실물 사진 구도 그대로:
+// 세워진 스트리퍼 날의 "크기별 구멍" 중 하나에 전선이 가로로 끼워져 있고,
+// 전선을 옆으로 잡아당기면 구멍에 피복 토막이 걸려 남으면서 구리가 드러난다.
 function drawStripAnim(c, t) {
   c.setTransform(1, 0, 0, 1, 0, 0);
   c.clearRect(0, 0, 560, 250); c.fillStyle = '#fbfcfe'; c.fillRect(0, 0, 560, 250);
-  const y = 100;
   const phase = t < 2.5 ? 0 : t < 5 ? 1 : 2;
   const p = phase === 0 ? t / 2.5 : phase === 1 ? (t - 2.5) / 2.5 : (t - 5) / 2.5;
-  const open = phase === 0 ? (1 - Math.min(1, p * 1.3)) * 20 : 0; // 턱 벌어짐 → 닫힘
-  const notches = [[320, 3.5], [356, 5], [392, 6.5], [428, 8]];   // 크기가 다른 구멍들
-  const grip = 356;                                               // 전선을 무는 구멍
-  // 스트리퍼: 위·아래 턱(마주 보는 반원 구멍) + 오른쪽 노란 손잡이 — 실물처럼
-  const jaw = dir => { // dir -1=위, +1=아래
-    const inner = y + dir * (open + 6.5);        // 물리는 면
-    const outer = y + dir * (open + 30);
-    c.fillStyle = '#23282f'; c.strokeStyle = '#14181d'; c.lineWidth = 1.5;
-    c.beginPath();
-    c.moveTo(295, inner); c.lineTo(455, inner); c.lineTo(475, outer); c.lineTo(295, outer);
-    c.closePath(); c.fill(); c.stroke();
-    // 마주 보는 반원 구멍 (크기 표시)
-    c.fillStyle = '#fbfcfe';
-    notches.forEach(([nx, r]) => {
-      c.beginPath(); c.arc(nx, inner, r, dir < 0 ? 0 : Math.PI, dir < 0 ? Math.PI : 0); c.fill();
-    });
-  };
-  jaw(-1); jaw(1);
-  // 손잡이
-  c.strokeStyle = '#f2c214'; c.lineWidth = 15; c.lineCap = 'round';
-  c.beginPath(); c.moveTo(470, y - open - 26); c.lineTo(540, y - open - 48); c.stroke();
-  c.beginPath(); c.moveTo(470, y + open + 26); c.lineTo(540, y + open + 48); c.stroke();
 
-  // 전선: 왼쪽이 벗길 끝(구멍에서 왼쪽으로 1cm 나와 있음).
-  // 몸통을 오른쪽으로 당기면 끝 피복 토막이 구멍에 걸려 남고, 구리가 드러난 채 빠져나온다
-  const tipLen = 55; // 벗겨질 끝 피복 (~1cm)
-  const slide = phase === 1 ? p * 130 : phase >= 2 ? 130 : 0;
+  // 스트리퍼 헤드: 비스듬히 세워진 캡슐형 날 + 가운데 세로로 늘어선 크기별 구멍
+  const hx = 300;                       // 헤드 중심 x
+  const holes = [[52, 3], [78, 4.5], [104, 6], [130, 7.5], [156, 9]]; // [y, r] 위가 작다
+  const gripHole = holes[2];            // 전선이 끼워진 구멍
+  const wy = gripHole[0];               // 전선 높이
+  c.save();
+  c.translate(hx, 110); c.rotate(0.12); c.translate(-hx, -110);
+  // 날 몸체 (둥근 세로 캡슐)
+  c.fillStyle = '#23282f'; c.strokeStyle = '#14181d'; c.lineWidth = 2;
+  c.beginPath(); c.roundRect(hx - 26, 26, 52, 158, 24); c.fill(); c.stroke();
+  // 크기별 구멍 (위가 작고 아래로 갈수록 크다)
+  holes.forEach(([hy, r]) => {
+    c.fillStyle = '#e8ebef';
+    c.beginPath(); c.ellipse(hx, hy, r + 3.5, r, 0, 0, Math.PI * 2); c.fill();
+    c.fillStyle = '#fbfcfe';
+    c.beginPath(); c.ellipse(hx, hy, r + 1.5, r - 1.2, 0, 0, Math.PI * 2); c.fill();
+  });
+  // 손잡이: 아래로 노란 두 갈래 (쥘 때 살짝 모임)
+  const squeeze = phase === 0 ? p * 5 : 5;
+  c.strokeStyle = '#f2c214'; c.lineWidth = 16; c.lineCap = 'round';
+  c.beginPath(); c.moveTo(hx - 10, 184); c.lineTo(hx - 34 + squeeze, 246); c.stroke();
+  c.beginPath(); c.moveTo(hx + 10, 184); c.lineTo(hx + 34 - squeeze, 246); c.stroke();
+  c.restore();
+
+  // 전선: 구멍을 가로로 통과. 왼쪽 1cm가 벗겨질 끝, 오른쪽이 몸통(손으로 잡는 쪽)
+  const tipLen = 55;
+  const slide = phase === 1 ? p * 150 : phase >= 2 ? 150 : 0; // 오른쪽으로 잡아당김
   c.lineCap = 'round';
-  if (phase >= 1) { // 구멍에 걸려 남은 피복 토막
-    c.strokeStyle = '#a83029'; c.lineWidth = 11;
-    c.beginPath(); c.moveTo(grip - tipLen, y); c.lineTo(grip - 4, y); c.stroke();
+  if (phase >= 1) { // 구멍 왼쪽에 걸려 남은 피복 토막
+    c.strokeStyle = '#a83029'; c.lineWidth = 10;
+    c.beginPath(); c.moveTo(hx - 14 - tipLen, wy); c.lineTo(hx - 14, wy); c.stroke();
   }
-  // 피복 몸통 — 구멍을 지나 오른쪽 화면 밖까지 (당기면 오른쪽으로 이동)
-  const bodyLeft = (phase === 0 ? grip - tipLen : grip) + slide;
-  c.strokeStyle = '#d63c34'; c.lineWidth = 11;
-  c.beginPath(); c.moveTo(bodyLeft, y); c.lineTo(560, y); c.stroke();
-  if (phase >= 1) { // 몸통 끝에 드러난 구리 (몸통과 함께 오른쪽으로)
-    const tw = phase === 2 ? Math.min(1, p * 1.4) : 0; // 꼬임 정도
+  // 피복 몸통 (구멍 오른쪽으로 이어짐 — 당기면 오른쪽으로 이동)
+  const bodyLeft = (phase === 0 ? hx - 14 - tipLen : hx + 12) + slide;
+  c.strokeStyle = '#d63c34'; c.lineWidth = 10;
+  c.beginPath(); c.moveTo(bodyLeft, wy); c.lineTo(560, wy); c.stroke();
+  if (phase === 0) { // 아직 안 당김 — 구멍 앞을 지나는 전선 위에 구멍 테두리를 살짝 덧그려 "끼워져 있음"을 보여준다
+    c.fillStyle = 'rgba(35,40,47,0.85)';
+    c.beginPath(); c.ellipse(hx, wy, 9.5, 7.5, 0.12, -Math.PI * 0.6, Math.PI * 0.6); c.fill();
+  }
+  if (phase >= 1) { // 몸통 왼끝에 드러난 구리 (당겨져 나온 부분)
+    const tw = phase === 2 ? Math.min(1, p * 1.4) : 0;
     c.strokeStyle = '#c58f4a'; c.lineWidth = 2;
     for (let k = -1; k <= 1; k++) {
       c.beginPath();
       for (let x = 0; x <= 46; x += 4) {
         const spread = 4.5 * (1 - tw) + 0.6;
-        const yy = y + k * spread * Math.sin(x / 9 + k);
+        const yy = wy + k * spread * Math.sin(x / 9 + k);
         if (x === 0) c.moveTo(bodyLeft - x, yy); else c.lineTo(bodyLeft - x, yy);
       }
       c.stroke();
     }
   }
-  animCaption(c, phase === 0 ? '① 끝에서 1cm쯤을 굵기에 맞는 구멍에 넣고 손잡이를 꽉 쥐어요'
-    : phase === 1 ? '② 전선을 당기면 피복 토막만 구멍에 남고 구리가 드러나요'
+  animCaption(c, phase === 0 ? '① 끝에서 1cm쯤을 굵기에 맞는 구멍에 끼우고 손잡이를 꽉 쥐어요'
+    : phase === 1 ? '② 전선을 옆으로 잡아당기면 피복 토막만 구멍에 남아요'
     : '③ 드러난 구리 가닥을 손끝으로 비벼 꼬아 한 가닥으로');
 }
 // 송곳 구멍 → 전선 통과 → 테이프로 고정 (옆에서 본 단면)

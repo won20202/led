@@ -540,7 +540,9 @@ export function drawAssembled(tctx, rx, ry, rw, rh, opts = {}) {
 
   if (lit) { tctx.fillStyle = 'rgba(16,19,30,0.92)'; tctx.fillRect(rx, ry, rw, rh); }
 
-  quad([P3(0, 0, 0), P3(d.bw, 0, 0), P3(d.bw, d.bh, 0), P3(0, d.bh, 0)],
+  if (opts.noBack) // 뒷면을 아직 붙이지 않은 상태 — 자리만 점선으로
+    quad([P3(0, 0, 0), P3(d.bw, 0, 0), P3(d.bw, d.bh, 0), P3(0, d.bh, 0)], null, '#a8b2bd', true);
+  else quad([P3(0, 0, 0), P3(d.bw, 0, 0), P3(d.bw, d.bh, 0), P3(0, d.bh, 0)],
     wallFill(opts.opaque ? (lit ? 'rgb(52,54,62)' : 'rgb(240,236,226)') : lit ? 'rgba(60,58,50,0.9)' : 'rgba(247,243,232,0.95)'), line, walls === 'dashed');
   // 완성 미리보기용: 앞면(트레이싱지 면)에 도안 화면을 그대로 입힌다 — 회전해도 따라간다
   if (opts.frontCanvas) {

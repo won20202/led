@@ -190,22 +190,25 @@
       <div id="order-pool"></div>
     </aside>
     <div class="panel-center scrollable order-center">
-      <div class="order-left">
-        <h3>내가 정한 순서</h3>
-        <div id="order-seq"></div>
-        <div class="tool-row">
-          <button id="btn-order-prev" disabled>이전 단계</button>
-          <button id="btn-order-next" disabled>다음 단계</button>
-          <button id="btn-order-reset">처음부터</button>
+      <div class="order-cols">
+        <div class="order-left">
+          <h3>내가 정한 순서</h3>
+          <div id="order-seq"></div>
+          <div class="tool-row">
+            <button id="btn-order-prev" disabled>이전 단계</button>
+            <button id="btn-order-next" disabled>다음 단계</button>
+            <button id="btn-order-reset">처음부터</button>
+          </div>
+          <div id="order-result"></div>
         </div>
-        <div id="order-result"></div>
+        <div class="order-right">
+          <canvas id="order-canvas" width="540" height="330"></canvas>
+        </div>
       </div>
-      <div class="order-right">
-        <canvas id="order-canvas" width="540" height="330"></canvas>
-        <div id="order-tip"></div>
-        <h4>설계 일지</h4>
-        <div id="order-log" class="log-list"></div>
-      </div>
+      <!-- 팁·안전 경고는 화면 전체 폭으로 넓게 -->
+      <div id="order-tip"></div>
+      <h4>설계 일지</h4>
+      <div id="order-log" class="log-list"></div>
     </div>
   </section>
 
