@@ -114,11 +114,13 @@ h4 { font-size: 13px; margin: 12px 0 6px; color: #4a5561; }
 .d-row .dl-size { width: 4.2em; flex: none; }
 #d-l1-text, #d-l2-text { width: 70px; font-size: 18px; text-align: center; }
 
-.order-card { display: block; width: 100%; text-align: left; margin: 5px 0; padding: 10px; font-size: 14px; }
+.order-card { display: block; width: 100%; text-align: left; margin: 5px 0; padding: 11px; font-size: 15px; }
 .order-card.placed { background: #eef6ff; border-color: #9cc3e8; }
 .order-card .num { display: inline-block; background: #2b6cb0; color: #fff; border-radius: 50%; width: 22px; height: 22px; text-align: center; line-height: 22px; margin-right: 6px; }
 #order-seq { max-width: 460px; }
-#order-result { max-width: 460px; margin-top: 12px; }
+#order-result { margin-top: 12px; }
+/* 조립 순서 탭은 안내문이 핵심이라 글자를 큼직하게 */
+.order-right .hint, .order-right .muted, #order-result p { font-size: 15px; line-height: 1.65; }
 .order-step { color: #1e8e4e; padding: 3px 0; }
 .order-fail { color: #c0392b; font-weight: 700; padding: 3px 0; }
 
@@ -193,7 +195,7 @@ button.link:hover { color: #4a5561; background: transparent; }
 
 /* 조립 순서 탭: 왼쪽 순서/결과 + 오른쪽 시뮬레이션 */
 .order-center { display: flex !important; gap: 18px; align-items: flex-start; }
-.order-left { width: 340px; min-width: 300px; }
+.order-left { width: 320px; min-width: 290px; }
 .order-right { flex: 1; min-width: 0; position: sticky; top: 0; }
 #order-canvas { background: #fff; border-radius: 12px; box-shadow: 0 1px 6px rgba(30,50,90,0.1); max-width: 100%; }
 #order-tip { max-width: 560px; }

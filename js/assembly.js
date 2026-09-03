@@ -16,7 +16,7 @@ const CARDS = [
   { id: 'wire', label: '회로 연결 (테이프·LED 붙이기)' },
   { id: 'lightcheck', label: '점등 확인' },
   { id: 'glue5', label: '5면 조립 (뒷면 제외)' },
-  { id: 'battery', label: '건전지 홀더 부착·전지 연결' },
+  { id: 'battery', label: '건전지 홀더 부착·전선 연결' },
   { id: 'finalcheck', label: '최종 점등 확인' },
   { id: 'backclose', label: '뒷면 조립' },
 ];
@@ -27,9 +27,9 @@ const TIPS = {
   dryfit: '풀로 붙이기 전에 맞춰만 보는 단계예요. 지금 치수가 틀린 걸 발견하면 우드락을 다시 자를 기회가 있어요.',
   front: '오려낸 안쪽 조각(ㅇ, ㅁ의 속)은 버리지 말고 모아 두세요. 트레이싱지를 붙인 뒤 제자리에 다시 붙이면 글자가 또렷해져요.',
   wire: 'LED 다리를 양옆으로 벌려 "ㄴ"자로 눕혀 평평하게 만들어야 전도성 테이프에 잘 붙어요. 긴 다리가 (+)극입니다 — 헷갈리면 긴 다리에 매직으로 표시해 두세요.',
-  lightcheck: '전선 피복은 와이어 스트리퍼의 0.6 구멍에 넣고 1cm쯤 돌려 벗겨요. 손톱이나 이로 벗기면 다치거나 전선이 끊어질 수 있어요.',
+  lightcheck: '전지를 잠시 대어 확인만 해요. 안 켜지는 LED가 있으면 긴 다리(+)가 (+)줄에 있는지, 다리가 테이프에 잘 눌려 있는지 확인하세요. 전선 피복은 와이어 스트리퍼의 0.6 구멍에 넣고 1cm쯤 돌려 벗겨요 — 손톱이나 이로 벗기면 다쳐요.',
   glue5: '양면테이프나 목공풀로 붙이고, 안쪽 모서리를 스카치테이프로 한 번 더 보강하면 케이스가 튼튼해져요.',
-  battery: '건전지는 홀더 안의 +/− 그림 방향대로 끼우세요. 거꾸로 끼우면 회로가 뜨거워지고 타는 냄새가 날 수 있어요!',
+  battery: '① 뒷면(홀더 붙일 자리 근처)에 송곳으로 구멍을 뚫고 ② 와이어 스트리퍼로 피복을 벗긴 홀더 전선을 구멍으로 통과시켜 ③ 벗겨진 구리 부분을 안쪽 전도성 테이프 위에 붙이고 그 위를 테이프로 한 번 더 눌러 고정하세요. 빨간 전선은 (+)줄, 검정 전선은 (−)줄에! 건전지는 홀더 안의 +/− 그림 방향대로 — 거꾸로 끼우면 회로가 뜨거워지고 타는 냄새가 날 수 있어요.',
   finalcheck: '뒷면을 붙이기 전 마지막 점검이에요. 지금이라면 아직 손을 넣어 안쪽을 고칠 수 있어요.',
   backclose: '학번과 이름을 쓰고, 제출 전에 완성품 사진을 찍어 두는 것도 잊지 마세요.',
 };
@@ -88,14 +88,16 @@ function clearCanvas() {
   // 기기 화면(폭·높이)에 맞춰 최대한 크게 — 카드 목록(왼쪽 340px)을 뺀 나머지를 쓴다
   const host = cv.closest('.order-center') || cv.parentElement;
   const maxByH = Math.round(((window.innerHeight || 800) - 260) / 0.6);
-  const w = Math.max(520, Math.min(1400, maxByH, (host ? host.clientWidth : 960) - 400));
+  const w = Math.max(520, Math.min(1400, maxByH, (host ? host.clientWidth : 960) - 370));
   if (cv.width !== w) { cv.width = w; cv.height = Math.round(w * 0.6); }
   ctx.fillStyle = '#f4f6f9';
   ctx.fillRect(0, 0, cv.width, cv.height);
 }
 function caption(text) {
-  ctx.fillStyle = '#4a5561'; ctx.font = '13px sans-serif';
-  ctx.fillText(text, 14, 22);
+  // 캔버스 크기에 맞춰 캡션도 커진다 (노트북·큰 모니터에서 잘 보이게)
+  const fs = Math.max(13, Math.round(cv.width * 0.017));
+  ctx.fillStyle = '#4a5561'; ctx.font = `${fs}px sans-serif`;
+  ctx.fillText(text, 14, fs + 10);
 }
 
 function sceneCut() {
@@ -135,7 +137,7 @@ function sceneCase(opts) {
 }
 function scenePlace() {
   clearCanvas();
-  caption('건전지 홀더를 붙일 위치를 클릭하세요 (뒷면 바깥쪽)');
+  caption('건전지 홀더를 붙일 위치를 클릭하세요 (뒷면 바깥쪽) — 이 근처에 송곳 구멍을 뚫어 전선을 안으로 넣어요');
   const d = dims();
   const S = Math.min((cv.width - 80) / d.bw, (cv.height - 90) / d.bh);
   const px = (cv.width - d.bw * S) / 2, py = 40;
