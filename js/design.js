@@ -34,7 +34,9 @@ function loadImageEls() {
 // 이미지는 항상 앞면 전체(frontW×frontH)에 맞춘다. 작업 영역으로 줄이지 않는다 —
 // 캔바 파일을 그대로 인쇄해 쓰기 때문에 화면과 인쇄물이 1:1로 대응해야 한다.
 function importImage(img) {
-  const MW = Math.round(config.frontW * 16), MH = Math.round(config.frontH * 16);
+  // cm당 40px — 화면 확대보다 높은 해상도라 원본 글꼴·그림 모양이 그대로 살아난다
+  const RES = 40;
+  const MW = Math.round(config.frontW * RES), MH = Math.round(config.frontH * RES);
   const oc = document.createElement('canvas');
   oc.width = MW; oc.height = MH;
   const c = oc.getContext('2d', { willReadFrequently: true });
@@ -45,8 +47,10 @@ function importImage(img) {
   for (let i = 0; i < MW * MH; i++) {
     const r = src.data[i * 4], g = src.data[i * 4 + 1], b = src.data[i * 4 + 2];
     const lum = 0.299 * r + 0.587 * g + 0.114 * b;
-    if (lum < 200) { // 잉크로 판정 (흰 바탕이 아니면 오려낼 부분)
-      maskD.data[i * 4] = 255; maskD.data[i * 4 + 1] = 255; maskD.data[i * 4 + 2] = 255; maskD.data[i * 4 + 3] = 255;
+    // 잉크로 판정 (흰 바탕이 아니면 오려낼 부분) — 경계는 부드럽게
+    const a = lum < 170 ? 255 : lum < 215 ? Math.round((215 - lum) / 45 * 255) : 0;
+    if (a > 0) {
+      maskD.data[i * 4] = 255; maskD.data[i * 4 + 1] = 255; maskD.data[i * 4 + 2] = 255; maskD.data[i * 4 + 3] = a;
     }
   }
   c.putImageData(maskD, 0, 0);
