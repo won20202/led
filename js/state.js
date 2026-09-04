@@ -360,14 +360,16 @@ function replaceWork(w) {
   Object.assign(work, blankWork(), w || {});
 }
 
-export function login(ban, num, grade) {
+export async function login(ban, num, grade) {
   student = { grade: grade || config.grade, ban, num };
   const raw = localStorage.getItem(studentKey(student)) ||
     (student.grade === config.grade ? localStorage.getItem(`lps_work_${ban}-${num}`) : null); // 옛 키 호환
   let saved = null;
   if (raw) { try { saved = JSON.parse(raw); } catch (e) { /* ignore */ } }
   replaceWork(saved);
-  cloudPull();
+  // 서버 작업을 먼저 받아 합친 뒤에 화면이 열리게 한다.
+  // (기다리지 않으면 새 기기의 빈 작업이 서버의 진짜 작업을 덮어쓸 수 있다)
+  await cloudPull();
 }
 
 export function setReadOnlyWork(w, label) {

@@ -35,7 +35,7 @@ function setupLogin() {
   ['login-sid', 'login-code'].forEach(id =>
     $(id).addEventListener('keydown', e => { if (e.key === 'Enter') $('login-btn').click(); }));
 
-  $('login-btn').addEventListener('click', () => {
+  $('login-btn').addEventListener('click', async () => {
     const sid = $('login-sid').value.trim();
     const p = parseSid(sid);
     if (!p) {
@@ -78,7 +78,7 @@ function setupLogin() {
       return;
     }
     localStorage.setItem('lps_last_sid', sid);
-    login(ban, num, p.grade);
+    await login(ban, num, p.grade); // 서버 작업을 받아온 뒤 화면을 연다
     sheetLog('접속', '');
     $('student-badge').textContent = `${p.grade}학년 ${ban}반 ${num}번`;
     $('login-modal').classList.add('hidden');

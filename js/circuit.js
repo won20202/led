@@ -1456,7 +1456,7 @@ export function initCircuit() {
   // 선택된 부품의 드래그 준비 (붙어 있는 테이프 끝점도 함께 기억)
   function beginDrag(p, e) {
     const C = am();
-    cv.setPointerCapture(e.pointerId);
+    try { cv.setPointerCapture(e.pointerId); } catch (err) { /* 일부 환경에서 실패해도 드래그는 계속 */ }
     pushUndo(); // 드래그 시작 전 상태 저장
     if (selected.type === 'led') dragOff = { x: p.x - C.leds[selected.i].x, y: p.y - C.leds[selected.i].y, attach: captureAttach(selected) };
     else if (selected.type === 'res') dragOff = { x: p.x - C.resistors[selected.i].x, y: p.y - C.resistors[selected.i].y, attach: captureAttach(selected) };
