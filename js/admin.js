@@ -5,6 +5,7 @@ import { config, saveConfig, exportConfigCode, importConfigCode, getMisses, clea
          makeSid, parseSid, weekKeyOf, timetableForWeek, runsOf, todayRuns,
          rosterActive, BLOCKED_STATUS } from './state.js';
 import { TIPS as ORDER_TIPS, SAFETY as ORDER_SAFETY } from './assembly.js';
+import { switchTab } from './app.js';
 
 const $ = id => document.getElementById(id);
 
@@ -918,6 +919,8 @@ function openReadOnly(w, label, cloudId) {
   $('ro-exit').addEventListener('click', () => { location.search = '?admin=1'; });
   $('student-badge').textContent = label;
   document.dispatchEvent(new CustomEvent('work-loaded'));
+  // 학생이 지금 보고 있는 탭을 그대로 열어 준다 (탭이 하나도 안 켜져 빈 화면이 되는 것 방지)
+  switchTab(w && w.activeTab ? w.activeTab : 'case');
   window.dispatchEvent(new Event('resize'));
   // 서버 작업이면 주기적으로 다시 받아와 실시간처럼 보여준다
   clearInterval(liveTimer);
@@ -928,6 +931,9 @@ function openReadOnly(w, label, cloudId) {
         if (w2) {
           setReadOnlyWork(w2, label);
           document.dispatchEvent(new CustomEvent('work-loaded'));
+          // 학생이 탭을 옮기면 교사 화면도 따라간다
+          const cur = document.querySelector('.tab-btn.active')?.dataset.tab;
+          if (w2.activeTab && w2.activeTab !== cur) switchTab(w2.activeTab);
         }
       } catch (e) { /* 다음 주기에 재시도 */ }
     }, 4000);
