@@ -117,7 +117,9 @@ export const DEFAULT_CONFIG = {
     { start: '15:10', end: '15:55' },
   ],
   adminPin: '2026',
-  supabaseUrl: '', supabaseKey: '',
+  // 학교 공용 Supabase (publishable key — 브라우저 공개용으로 설계된 키라 코드에 넣어도 안전)
+  supabaseUrl: 'https://gakrtbuicpruxjaqalec.supabase.co',
+  supabaseKey: 'sb_publishable_Y6T-PsFY5WPq-w7dZ2IQMA_COG6dOYI',
   sheetUrl: '',             // Google Apps Script 웹 앱 URL — 설정하면 학생 활동·피드백이 시트에 기록됨
   faq: DEFAULT_FAQ,
 };
@@ -134,6 +136,11 @@ function loadConfig() {
       const c = { ...DEFAULT_CONFIG, ...JSON.parse(raw) };
       // 옛 설정 이관: dailyCode/classCode → entryMode
       if (!c.entryMode) c.entryMode = c.dailyCode ? 'daily' : (c.classCode ? 'fixed' : 'none');
+      // 옛 설정에 서버 주소가 비어 있으면 내장 기본 서버로 연결
+      if (!c.supabaseUrl || !c.supabaseKey) {
+        c.supabaseUrl = DEFAULT_CONFIG.supabaseUrl;
+        c.supabaseKey = DEFAULT_CONFIG.supabaseKey;
+      }
       return c;
     }
   } catch (e) { /* 손상된 설정은 무시하고 기본값 */ }
